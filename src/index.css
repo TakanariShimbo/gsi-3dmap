@@ -47,6 +47,19 @@ body,
 }
 
 /* --- 地名検索（上中央） --- */
+/* --- 中心レティクル（画面中央＝注視点） --- */
+.center-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.9;
+  /* どんな地形色の上でも視認できるよう薄い暗縁を付ける。 */
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
+  z-index: 5;
+}
+
 /* --- メニュー開閉ボタン（左上） --- */
 .menu-toggle {
   position: absolute;

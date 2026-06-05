@@ -87,9 +87,8 @@ export default function MapView() {
   // サイドバー開閉と、右下リモコンの表示。
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showRemote, setShowRemote] = useState(true);
-  // 中心マーカー（視点中心＝注視点の目印）。
+  // 中心マーカー（視点中心＝画面中央の目印）。画面中央のレティクルで表示する。
   const [showCenter, setShowCenter] = useState(true);
-  const showCenterRef = useRef(true);
 
   // --- 太陽・月 --- //
   const [celestialOn, setCelestialOn] = useState(false);
@@ -172,14 +171,6 @@ export default function MapView() {
     let celestialActive = false;
     const celestialCenter = new THREE.Vector3();
     let lastObsWorld: THREE.Vector2 | null = null; // 直近に sky を計算した中心(world XZ)
-
-    // 中心マーカー（注視点＝画面中央の目印）。地形に隠れず常に見えるよう depthTest off。
-    const centerMarker = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 20, 16),
-      new THREE.MeshBasicMaterial({ color: 0x6fd0ff, transparent: true, opacity: 0.9, depthTest: false }),
-    );
-    centerMarker.renderOrder = 1000;
-    scene.add(centerMarker);
 
     // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
     const ringPts: THREE.Vector3[] = [];
@@ -318,12 +309,6 @@ export default function MapView() {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
-      // 中心マーカー：注視点に置き、カメラ距離に比例（見かけ大きさ一定）。
-      centerMarker.visible = showCenterRef.current;
-      if (showCenterRef.current) {
-        centerMarker.position.copy(controls.target);
-        centerMarker.scale.setScalar(Math.max(camDist * 0.012, 0.002));
-      }
       // 円盤クリップは terrain.update より前に設定（refine が当該フレームの半径を使う）。
       if (celestialActive) {
         // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
@@ -363,8 +348,6 @@ export default function MapView() {
       apiRef.current = null;
       previewRing.geometry.dispose();
       (previewRing.material as THREE.Material).dispose();
-      centerMarker.geometry.dispose();
-      (centerMarker.material as THREE.Material).dispose();
       celestial.dispose();
       controls.dispose();
       terrain.dispose();
@@ -389,11 +372,6 @@ export default function MapView() {
   useEffect(() => {
     apiRef.current?.setBasemap(basemapById(basemapId));
   }, [basemapId]);
-
-  // 中心マーカーの表示切替（ループから参照する ref に同期）。
-  useEffect(() => {
-    showCenterRef.current = showCenter;
-  }, [showCenter]);
 
   // 太陽・月: 観測点(=視点中心)＋日時から sky/軌跡を計算して反映。中心追従はループ側。
   useEffect(() => {
@@ -501,6 +479,18 @@ export default function MapView() {
   return (
     <div className="mapview">
       <div className="mapview-canvas" ref={mountRef} />
+
+      {/* 中心レティクル（注視点＝画面中央の目印） */}
+      {showCenter && (
+        <svg className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#8fe0ff" strokeWidth="1.6" />
+          <circle cx="16" cy="16" r="1.5" fill="#8fe0ff" />
+          <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="16" y1="25.5" x2="16" y2="29.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="2.5" y1="16" x2="6.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="25.5" y1="16" x2="29.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )}
 
       {/* メニュー開閉（左上） */}
       <button
