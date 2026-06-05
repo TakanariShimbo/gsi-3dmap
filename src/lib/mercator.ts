@@ -48,9 +48,11 @@ export const ELEV_SCALE = (VERTICAL_EXAGGERATION / 1000) * Math.cos((ORIGIN_LAT 
 export function mercXToWorld(mx: number): number {
   return (mx - ORIGIN_MX) * WORLD_SCALE;
 }
-/** メルカトルY(m) → ワールドZ（北+）。 */
+/** メルカトルY(m) → ワールドZ（北 = -Z）。
+ * X=東 / Y=上 / Z=南 とすることで Three.js の右手系と一致し、鏡像表示を防ぐ
+ * （東×上 = -北 なので、北を -Z にすると右手系になる）。 */
 export function mercYToWorld(my: number): number {
-  return (my - ORIGIN_MY) * WORLD_SCALE;
+  return -(my - ORIGIN_MY) * WORLD_SCALE;
 }
 /** 標高(m) → ワールドY（上+、VEX反映）。 */
 export function elevToWorldY(elevM: number): number {
