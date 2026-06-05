@@ -81,6 +81,8 @@ export default function MapView() {
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
   const homeLocRef = useRef<LonLat | null>(null);
+  // 中心レティクル（ループから画面座標を更新する）。
+  const reticleRef = useRef<SVGSVGElement | null>(null);
 
   // --- ベースマップ・検索の状態 --- //
   const [basemapId, setBasemapId] = useState(BASEMAPS[0].id);
@@ -194,6 +196,7 @@ export default function MapView() {
     // OFF にしたら、ON にした瞬間の視点へ戻す。
     let freeLookActive = false;
     let savedPose: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+    const projTmp = new THREE.Vector3(); // 中心点の画面投影用
 
     // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
     const ringPts: THREE.Vector3[] = [];
@@ -364,6 +367,21 @@ export default function MapView() {
         }
         terrain.update(camera, mount.clientHeight, camDist);
       }
+
+      // 中心レティクルは「マップの中心」(注視点。フリー中は凍結した中心)を画面に投影して追従。
+      const reticle = reticleRef.current;
+      if (reticle) {
+        const mc = freeLookActive && savedPose ? savedPose.target : controls.target;
+        projTmp.copy(mc).project(camera);
+        if (projTmp.z <= 1) {
+          reticle.style.display = "block";
+          reticle.style.left = `${(projTmp.x * 0.5 + 0.5) * mount.clientWidth}px`;
+          reticle.style.top = `${(-projTmp.y * 0.5 + 0.5) * mount.clientHeight}px`;
+        } else {
+          reticle.style.display = "none"; // カメラ後方なら隠す
+        }
+      }
+
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
@@ -584,7 +602,7 @@ export default function MapView() {
 
       {/* 中心レティクル（注視点＝画面中央の目印） */}
       {showCenter && (
-        <svg className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <svg ref={reticleRef} className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
           <circle cx="16" cy="16" r="8.5" fill="none" stroke="#8fe0ff" strokeWidth="1.6" />
           <circle cx="16" cy="16" r="1.5" fill="#8fe0ff" />
           <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
