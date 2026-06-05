@@ -3,6 +3,16 @@ import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
 import {
+  IconMountain,
+  IconPin,
+  IconDownload,
+  IconCaret,
+  IconRotate,
+  IconHome,
+  IconPlus,
+  IconMinus,
+} from "./icons";
+import {
   worldToLonLat,
   lonToMercX,
   latToMercY,
@@ -454,7 +464,9 @@ export default function MapView() {
               {results.map((r, i) => (
                 <li key={`${r.kind},${r.lat},${r.lon},${i}`}>
                   <button onClick={() => goToResult(r)}>
-                    <span className="res-ico">{r.kind === "mountain" ? "⛰" : "📍"}</span>
+                    <span className="res-ico">
+                      {r.kind === "mountain" ? <IconMountain size={15} /> : <IconPin size={15} />}
+                    </span>
                     <span className="res-title">{r.title}</span>
                     {r.kind === "mountain" && (
                       <span className="res-sub">
@@ -578,6 +590,7 @@ export default function MapView() {
                 onClick={startDownload}
                 disabled={!plan || plan.jobs.length === 0}
               >
+                <IconDownload size={16} />
                 ダウンロード
               </button>
             )}
@@ -604,12 +617,20 @@ export default function MapView() {
             </button>
           </div>
           <div className="nav-row">
-            <button className="nav-btn" title="左に回す" {...hold({ orbit: 1 }, "orbit")}>↺</button>
-            <button className="nav-btn" title="右に回す" {...hold({ orbit: -1 }, "orbit")}>↻</button>
+            <button className="nav-btn" title="左に回す" {...hold({ orbit: 1 }, "orbit")}>
+              <IconRotate dir="ccw" />
+            </button>
+            <button className="nav-btn" title="右に回す" {...hold({ orbit: -1 }, "orbit")}>
+              <IconRotate dir="cw" />
+            </button>
           </div>
           <div className="nav-pad">
-            <button className="nav-btn nav-up" title="前へ" {...hold({ panZ: 1 }, "panZ")}>▲</button>
-            <button className="nav-btn nav-left" title="左へ" {...hold({ panX: -1 }, "panX")}>◀</button>
+            <button className="nav-btn nav-up" title="前へ" {...hold({ panZ: 1 }, "panZ")}>
+              <IconCaret dir="up" />
+            </button>
+            <button className="nav-btn nav-left" title="左へ" {...hold({ panX: -1 }, "panX")}>
+              <IconCaret dir="left" />
+            </button>
             <button
               className="nav-btn nav-home"
               title="日本全体に戻す"
@@ -617,14 +638,22 @@ export default function MapView() {
                 navRef.current.home = true;
               }}
             >
-              ⌂
+              <IconHome />
             </button>
-            <button className="nav-btn nav-right" title="右へ" {...hold({ panX: 1 }, "panX")}>▶</button>
-            <button className="nav-btn nav-down" title="後ろへ" {...hold({ panZ: -1 }, "panZ")}>▼</button>
+            <button className="nav-btn nav-right" title="右へ" {...hold({ panX: 1 }, "panX")}>
+              <IconCaret dir="right" />
+            </button>
+            <button className="nav-btn nav-down" title="後ろへ" {...hold({ panZ: -1 }, "panZ")}>
+              <IconCaret dir="down" />
+            </button>
           </div>
           <div className="nav-zoom">
-            <button className="nav-btn" title="ズームイン" {...hold({ dolly: 1 }, "dolly")}>＋</button>
-            <button className="nav-btn" title="ズームアウト" {...hold({ dolly: -1 }, "dolly")}>−</button>
+            <button className="nav-btn" title="ズームイン" {...hold({ dolly: 1 }, "dolly")}>
+              <IconPlus />
+            </button>
+            <button className="nav-btn" title="ズームアウト" {...hold({ dolly: -1 }, "dolly")}>
+              <IconMinus />
+            </button>
           </div>
         </div>
       )}
