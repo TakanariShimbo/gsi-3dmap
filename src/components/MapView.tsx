@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
-import { QuadtreeTerrain, type TerrainStats } from "../terrain/QuadtreeTerrain";
+import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
 import {
   worldToLonLat,
   lonToMercX,
@@ -54,7 +54,6 @@ const RADIUS_DEFAULT = 8;
 
 export default function MapView() {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const [stats, setStats] = useState<TerrainStats | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
   const navRef = useRef<Nav>({ panX: 0, panZ: 0, orbit: 0, tilt: 0, dolly: 0, home: false });
   // effect 内で作る各種カメラ/地形操作を React 側へ橋渡しする。
@@ -254,14 +253,12 @@ export default function MapView() {
     };
 
     let raf = 0;
-    let statsTick = 0;
     const loop = () => {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
       terrain.update(camera, mount.clientHeight, camDist);
       renderer.render(scene, camera);
-      if (++statsTick % 20 === 0) setStats(terrain.getStats());
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -380,14 +377,6 @@ export default function MapView() {
   return (
     <div className="mapview">
       <div className="mapview-canvas" ref={mountRef} />
-      {stats && (
-        <div className="hud">
-          <span>tiles {stats.loaded}</span>
-          <span>load {stats.loading}</span>
-          <span>queue {stats.queued}</span>
-          <span>draw {stats.visible}</span>
-        </div>
-      )}
 
       {/* 山名・土地名検索 → フライト（上中央） */}
       <div className="search">
