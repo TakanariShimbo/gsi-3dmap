@@ -47,6 +47,19 @@ body,
 }
 
 /* --- 地名検索（上中央） --- */
+/* --- 中心レティクル（画面中央＝注視点） --- */
+.center-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.9;
+  /* どんな地形色の上でも視認できるよう薄い暗縁を付ける。 */
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
+  z-index: 5;
+}
+
 /* --- メニュー開閉ボタン（左上） --- */
 .menu-toggle {
   position: absolute;
@@ -66,6 +79,32 @@ body,
 }
 .menu-toggle:hover {
   background: rgba(34, 46, 62, 0.85);
+}
+
+/* 自由視点切替（右上） */
+.freelook-toggle {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  right: max(8px, env(safe-area-inset-right, 8px));
+  height: 42px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: #e6edf5;
+  background: rgba(18, 24, 33, 0.78);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 10px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.freelook-toggle:hover {
+  background: rgba(34, 46, 62, 0.85);
+}
+.freelook-toggle.is-active {
+  color: #fff;
+  background: rgba(48, 100, 160, 0.92);
+  border-color: rgba(120, 180, 240, 0.65);
 }
 
 /* --- サイドバー --- */
@@ -123,15 +162,42 @@ body,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0;
+  padding: 8px 0;
   border-top: 1px solid rgba(130, 150, 175, 0.16);
 }
-.side-sec h3 {
-  margin: 0;
+/* 折りたたみ時はヘッダ以外を隠す（中身はアンマウントしないので状態は保持）。 */
+.side-sec.is-collapsed > *:not(.side-sec-head) {
+  display: none;
+}
+.side-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 2px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #8fa2bb;
+  color: #9fb0c4;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.side-sec-head:hover {
+  color: #cdd9e8;
+}
+/* 開閉シェブロン（閉=右向き / 開=下向き）。 */
+.side-chev {
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  margin-right: 3px;
+}
+.side-chev.is-open {
+  transform: rotate(45deg);
 }
 .side-toggle {
   display: flex;

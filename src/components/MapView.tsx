@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
+import { CelestialLayer } from "../terrain/CelestialLayer";
+import { computeSky, computeTrack, type SkyState, type SkyBody } from "../lib/celestial";
 import {
   IconMountain,
   IconPin,
@@ -11,6 +13,7 @@ import {
   IconHome,
   IconPlus,
   IconMinus,
+  IconLocate,
 } from "./icons";
 import {
   worldToLonLat,
@@ -72,7 +75,14 @@ export default function MapView() {
     setPreview: (center: LonLat | null, radiusKm: number) => void;
     flyTo: (c: LonLat) => void;
     setBasemap: (layer: Basemap) => void;
+    setCelestialActive: (on: boolean) => void;
+    setCelestialSky: (sky: SkyState | null, sunTrack: SkyBody[], moonTrack: SkyBody[]) => void;
+    setFreeLook: (on: boolean) => void;
   } | null>(null);
+  // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
+  const homeLocRef = useRef<LonLat | null>(null);
+  // 中心レティクル（ループから画面座標を更新する）。
+  const reticleRef = useRef<SVGSVGElement | null>(null);
 
   // --- ベースマップ・検索の状態 --- //
   const [basemapId, setBasemapId] = useState(BASEMAPS[0].id);
@@ -80,9 +90,41 @@ export default function MapView() {
   const [searchMode, setSearchMode] = useState<SearchMode>("both");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [locating, setLocating] = useState(false); // 現在地取得中
+  const [locError, setLocError] = useState<string | null>(null);
   // サイドバー開閉と、右下リモコンの表示。
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showRemote, setShowRemote] = useState(true);
+  // 中心マーカー（視点中心＝画面中央の目印）。画面中央のレティクルで表示する。
+  const [showCenter, setShowCenter] = useState(true);
+  // 視点フリーモード（解像度・太陽月・円盤を凍結して視点だけ動かす）。
+  const [freeLook, setFreeLook] = useState(false);
+  // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
+  const [openSec, setOpenSec] = useState<Record<string, boolean>>({
+    search: true,
+    map: true,
+    view: false,
+    sun: false,
+    save: false,
+  });
+  const toggleSec = (id: string) => setOpenSec((s) => ({ ...s, [id]: !s[id] }));
+  const secClass = (id: string) => `side-sec${openSec[id] ? "" : " is-collapsed"}`;
+
+  // --- 太陽・月 --- //
+  const [celestialOn, setCelestialOn] = useState(false);
+  const [sunObserver, setSunObserver] = useState<LonLat | null>(null);
+  // 現在時刻を中心(0)に、±12時間のオフセットで観測日時を作る。
+  const [baseTime, setBaseTime] = useState(() => new Date());
+  const [offsetMin, setOffsetMin] = useState(0);
+  const skyDate = useMemo(
+    () => new Date(baseTime.getTime() + offsetMin * 60000),
+    [baseTime, offsetMin],
+  );
+  // 観測点＋日時から太陽月の状態（UI表示＆レイヤ反映に使う）。
+  const skyInfo = useMemo<SkyState | null>(
+    () => (celestialOn && sunObserver ? computeSky(skyDate, sunObserver.lat, sunObserver.lon) : null),
+    [celestialOn, sunObserver, skyDate],
+  );
 
   // --- 事前ロード（オフライン保存）UI の状態 --- //
   const [maxZ, setMaxZ] = useState(PREFETCH_Z_DEFAULT);
@@ -123,6 +165,7 @@ export default function MapView() {
       9000,
     );
     camera.position.set(0, 2200, 2600);
+    camera.layers.enable(1); // 月（レイヤ1）も描画する
 
     const controls = new MapControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -140,6 +183,20 @@ export default function MapView() {
 
     const terrain = new QuadtreeTerrain(renderer);
     scene.add(terrain.group);
+
+    // 太陽・月の天球オーバーレイ。中心＝視点中心(controls.target)に毎フレーム追従し、
+    // 半径はカメラ距離に連動。パン・ズームの両方に円盤と太陽月が連動する。
+    const celestial = new CelestialLayer();
+    scene.add(celestial.group);
+    let celestialActive = false;
+    const celestialCenter = new THREE.Vector3();
+    let lastObsWorld: THREE.Vector2 | null = null; // 直近に sky を計算した中心(world XZ)
+
+    // 視点フリーモード: ON の間は地形LOD・円盤・太陽月を凍結し、カメラだけ動かせる。
+    // OFF にしたら、ON にした瞬間の視点へ戻す。
+    let freeLookActive = false;
+    let savedPose: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+    const projTmp = new THREE.Vector3(); // 中心点の画面投影用
 
     // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
     const ringPts: THREE.Vector3[] = [];
@@ -193,6 +250,27 @@ export default function MapView() {
       setPreview,
       flyTo,
       setBasemap: (layer) => terrain.setBasemap(layer),
+      setCelestialActive: (on) => {
+        celestialActive = on;
+        celestial.setVisible(on);
+        if (!on) {
+          terrain.setClip(null, 0); // 解除時は全面表示へ
+          lastObsWorld = null;
+        }
+      },
+      setCelestialSky: (sky, sunTrack, moonTrack) => celestial.setSky(sky, sunTrack, moonTrack),
+      setFreeLook: (on) => {
+        if (on) {
+          savedPose = { pos: camera.position.clone(), target: controls.target.clone() };
+          freeLookActive = true;
+        } else {
+          freeLookActive = false;
+          if (savedPose) {
+            flyGoal = savedPose; // モード前の視点へ滑らかに戻す
+            savedPose = null;
+          }
+        }
+      },
     };
 
     // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
@@ -269,7 +347,41 @@ export default function MapView() {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
-      terrain.update(camera, mount.clientHeight, camDist);
+      // 視点フリー中は、地形LOD・円盤・太陽月の連動を凍結（カメラだけ動かす）。
+      if (!freeLookActive) {
+        // 円盤クリップは terrain.update より前に設定（refine が当該フレームの半径を使う）。
+        if (celestialActive) {
+          // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
+          const tx = controls.target.x;
+          const tz = controls.target.z;
+          celestialCenter.set(tx, controls.target.y, tz);
+          const diskR = THREE.MathUtils.clamp(camera.position.distanceTo(celestialCenter) * 0.5, 2, 4000);
+          terrain.setClip({ x: tx, z: tz }, diskR);
+          celestial.place(celestialCenter, diskR * 1.1);
+          // 中心が十分動いたら sky(太陽月の方位高度・軌跡)を計算し直す。
+          const thr = Math.max(1, diskR * 0.08);
+          if (!lastObsWorld || Math.hypot(tx - lastObsWorld.x, tz - lastObsWorld.y) > thr) {
+            lastObsWorld = (lastObsWorld ?? new THREE.Vector2()).set(tx, tz);
+            setSunObserver(worldToLonLat(tx, tz));
+          }
+        }
+        terrain.update(camera, mount.clientHeight, camDist);
+      }
+
+      // 中心レティクルは「マップの中心」(注視点。フリー中は凍結した中心)を画面に投影して追従。
+      const reticle = reticleRef.current;
+      if (reticle) {
+        const mc = freeLookActive && savedPose ? savedPose.target : controls.target;
+        projTmp.copy(mc).project(camera);
+        if (projTmp.z <= 1) {
+          reticle.style.display = "block";
+          reticle.style.left = `${(projTmp.x * 0.5 + 0.5) * mount.clientWidth}px`;
+          reticle.style.top = `${(-projTmp.y * 0.5 + 0.5) * mount.clientHeight}px`;
+        } else {
+          reticle.style.display = "none"; // カメラ後方なら隠す
+        }
+      }
+
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
@@ -292,9 +404,12 @@ export default function MapView() {
       apiRef.current = null;
       previewRing.geometry.dispose();
       (previewRing.material as THREE.Material).dispose();
+      celestial.dispose();
       controls.dispose();
       terrain.dispose();
       renderer.dispose();
+      // HMR等で作り直す際、古いWebGLコンテキストを明示解放（コンテキスト枯渇＝真っ黒の予防）。
+      renderer.forceContextLoss();
       mount.removeChild(renderer.domElement);
     };
   }, []);
@@ -313,6 +428,34 @@ export default function MapView() {
   useEffect(() => {
     apiRef.current?.setBasemap(basemapById(basemapId));
   }, [basemapId]);
+
+  // 初回起動: 現在地が取れればそこへ移動し、ホームの基準にする。取れなければ日本全体ビューのまま。
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        homeLocRef.current = loc;
+        apiRef.current?.flyTo(loc);
+      },
+      () => undefined, // 失敗・拒否時は既定ビューのまま
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+    );
+  }, []);
+
+  // 太陽・月: 観測点(=視点中心)＋日時から sky/軌跡を計算して反映。中心追従はループ側。
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    if (!celestialOn || !sunObserver || !skyInfo) {
+      api.setCelestialActive(false);
+      return;
+    }
+    const sunTrack = computeTrack(skyDate, sunObserver.lat, sunObserver.lon, "sun");
+    const moonTrack = computeTrack(skyDate, sunObserver.lat, sunObserver.lon, "moon");
+    api.setCelestialSky(skyInfo, sunTrack, moonTrack);
+    api.setCelestialActive(true);
+  }, [celestialOn, sunObserver, skyDate, skyInfo]);
 
   // --- 画面ボタンのプレス/リリース --- //
   const start = (patch: Partial<Nav>) => (e: React.PointerEvent) => {
@@ -380,6 +523,71 @@ export default function MapView() {
     setSidebarOpen(false); // 飛んだ先の地図が見えるよう閉じる
   };
 
+  // --- 現在地へ移動（GPS） --- //
+  const goToCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocError("この端末では現在地を取得できません");
+      return;
+    }
+    setLocError(null);
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        homeLocRef.current = loc;
+        apiRef.current?.flyTo(loc);
+        setSidebarOpen(false);
+      },
+      (err) => {
+        setLocating(false);
+        setLocError(
+          err.code === err.PERMISSION_DENIED
+            ? "位置情報の利用が許可されていません"
+            : err.code === err.TIMEOUT
+              ? "現在地の取得がタイムアウトしました"
+              : "現在地を取得できませんでした",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
+  // 視点フリーの切替（ONで凍結、OFFでモード前の視点へ戻す）。
+  const toggleFreeLook = () => {
+    const nv = !freeLook;
+    setFreeLook(nv);
+    apiRef.current?.setFreeLook(nv);
+  };
+
+  // ホーム: 現在地が判明していればそこへ、なければ日本全体ビューへ。
+  const goHome = () => {
+    if (homeLocRef.current) apiRef.current?.flyTo(homeLocRef.current);
+    else navRef.current.home = true;
+  };
+
+  // --- 太陽・月操作 --- //
+  const toggleCelestial = (on: boolean) => {
+    setCelestialOn(on);
+    if (on && !sunObserver) setSunObserver(apiRef.current?.getCenter() ?? null);
+  };
+  const setSunNow = () => {
+    setBaseTime(new Date());
+    setOffsetMin(0);
+  };
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const fmtTime = (d: Date | null) => (d ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}` : "—");
+  const fmtDateTime = (d: Date) =>
+    `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const offLabel = `${offsetMin >= 0 ? "+" : "−"}${Math.floor(Math.abs(offsetMin) / 60)}:${pad2(Math.abs(offsetMin) % 60)}`;
+
+  const secHead = (id: string, title: string) => (
+    <button className="side-sec-head" onClick={() => toggleSec(id)} aria-expanded={openSec[id]}>
+      <span>{title}</span>
+      <span className={`side-chev${openSec[id] ? " is-open" : ""}`} />
+    </button>
+  );
+
   const SEARCH_MODES: { id: SearchMode; label: string }[] = [
     { id: "mountain", label: "山名" },
     { id: "place", label: "土地名" },
@@ -392,6 +600,18 @@ export default function MapView() {
     <div className="mapview">
       <div className="mapview-canvas" ref={mountRef} />
 
+      {/* 中心レティクル（注視点＝画面中央の目印） */}
+      {showCenter && (
+        <svg ref={reticleRef} className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#8fe0ff" strokeWidth="1.6" />
+          <circle cx="16" cy="16" r="1.5" fill="#8fe0ff" />
+          <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="16" y1="25.5" x2="16" y2="29.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="2.5" y1="16" x2="6.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="25.5" y1="16" x2="29.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )}
+
       {/* メニュー開閉（左上） */}
       <button
         className="menu-toggle"
@@ -400,6 +620,15 @@ export default function MapView() {
         onClick={() => setSidebarOpen((o) => !o)}
       >
         ☰
+      </button>
+
+      {/* 自由視点（解像度・太陽月を凍結して視点だけ動かす。解除でモード前の視点へ戻る） */}
+      <button
+        className={`freelook-toggle${freeLook ? " is-active" : ""}`}
+        title="自由視点：地図解像度・太陽・月を固定したまま視点だけ動かす。解除すると元の視点へ戻ります"
+        onClick={toggleFreeLook}
+      >
+        {freeLook ? "自由視点：ON" : "自由視点"}
       </button>
 
       {/* サイドバー背景（タップで閉じる） */}
@@ -413,8 +642,8 @@ export default function MapView() {
         </div>
 
         {/* 検索 */}
-        <section className="side-sec">
-          <h3>検索</h3>
+        <section className={secClass("search")}>
+          {secHead("search", "検索")}
           <div className="search-modes">
             {SEARCH_MODES.map((m) => (
               <button
@@ -459,6 +688,12 @@ export default function MapView() {
               )}
             </button>
           </form>
+
+          <button className="save-btn" onClick={goToCurrentLocation} disabled={locating}>
+            {locating ? <span className="spinner" aria-hidden="true" /> : <IconLocate size={16} />}
+            {locating ? "取得中…" : "現在地へ移動"}
+          </button>
+          {locError && <div className="save-warn">{locError}</div>}
           {results.length > 0 && (
             <ul className="search-results">
               {results.map((r, i) => (
@@ -481,8 +716,8 @@ export default function MapView() {
         </section>
 
         {/* 地図（ベースマップ） */}
-        <section className="side-sec">
-          <h3>地図</h3>
+        <section className={secClass("map")}>
+          {secHead("map", "地図")}
           <div className="basemap-switch">
             {BASEMAPS.map((b) => (
               <button
@@ -497,8 +732,8 @@ export default function MapView() {
         </section>
 
         {/* 表示 */}
-        <section className="side-sec">
-          <h3>表示</h3>
+        <section className={secClass("view")}>
+          {secHead("view", "表示")}
           <label className="side-toggle">
             <input
               type="checkbox"
@@ -507,11 +742,84 @@ export default function MapView() {
             />
             <span>操作リモコンを表示（右下）</span>
           </label>
+          <label className="side-toggle">
+            <input
+              type="checkbox"
+              checked={showCenter}
+              onChange={(e) => setShowCenter(e.target.checked)}
+            />
+            <span>中心マーカーを表示</span>
+          </label>
+        </section>
+
+        {/* 太陽・月 */}
+        <section className={secClass("sun")}>
+          {secHead("sun", "太陽・月")}
+          <label className="side-toggle">
+            <input
+              type="checkbox"
+              checked={celestialOn}
+              onChange={(e) => toggleCelestial(e.target.checked)}
+            />
+            <span>太陽・月を表示</span>
+          </label>
+
+          {celestialOn && (
+            <>
+              <p className="save-note">
+                画面中央（見ている地点）を中心に地形を円盤で切り抜き、外周に太陽・月を表示します。
+                パン・ズームに追従します。
+              </p>
+              {sunObserver && (
+                <div className="save-center">
+                  中心: {sunObserver.lat.toFixed(4)}°, {sunObserver.lon.toFixed(4)}°
+                </div>
+              )}
+
+              <label className="save-field">
+                <span>日時: {fmtDateTime(skyDate)}（現在 {offLabel}）</span>
+                <input
+                  type="range"
+                  min={-720}
+                  max={720}
+                  step={5}
+                  value={offsetMin}
+                  onChange={(e) => setOffsetMin(Number(e.target.value))}
+                />
+              </label>
+
+              <button className="save-link" onClick={setSunNow}>
+                現在時刻にリセット
+              </button>
+
+              {skyInfo && (
+                <div className="save-plan">
+                  <div>
+                    ☀ 太陽: 方位 {skyInfo.sun.azimuthDeg.toFixed(0)}° / 高度{" "}
+                    {skyInfo.sun.altitudeDeg.toFixed(0)}°
+                    {!skyInfo.sun.visible && "（地平線下）"}
+                  </div>
+                  <div>
+                    ☾ 月: 方位 {skyInfo.moon.azimuthDeg.toFixed(0)}° / 高度{" "}
+                    {skyInfo.moon.altitudeDeg.toFixed(0)}°
+                    {!skyInfo.moon.visible && "（地平線下）"}
+                  </div>
+                  <div>
+                    月齢: 照度 {(skyInfo.moonFraction * 100).toFixed(0)}%（
+                    {skyInfo.moonWaxing ? "満ちる" : "欠ける"}）
+                  </div>
+                  <div>
+                    日の出 {fmtTime(skyInfo.sunrise)} / 日の入 {fmtTime(skyInfo.sunset)}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </section>
 
         {/* 事前保存（オフライン） */}
-        <section className="side-sec">
-          <h3>事前保存（オフライン）</h3>
+        <section className={secClass("save")}>
+          {secHead("save", "事前保存（オフライン）")}
           <p className="save-note">
             画面中央（見ている地点）を中心に、指定した半径・詳細度ぶんを保存します。
             保存後は通信なしでもその範囲を3D表示できます。
@@ -631,13 +939,7 @@ export default function MapView() {
             <button className="nav-btn nav-left" title="左へ" {...hold({ panX: -1 }, "panX")}>
               <IconCaret dir="left" />
             </button>
-            <button
-              className="nav-btn nav-home"
-              title="日本全体に戻す"
-              onClick={() => {
-                navRef.current.home = true;
-              }}
-            >
+            <button className="nav-btn nav-home" title="ホーム（現在地）" onClick={goHome}>
               <IconHome />
             </button>
             <button className="nav-btn nav-right" title="右へ" {...hold({ panX: 1 }, "panX")}>
