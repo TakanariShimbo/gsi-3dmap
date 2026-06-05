@@ -2,18 +2,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { QuadtreeTerrain, type TerrainStats } from "../terrain/QuadtreeTerrain";
-import { worldToLonLat } from "../lib/mercator";
+import {
+  worldToLonLat,
+  lonToMercX,
+  latToMercY,
+  mercXToWorld,
+  mercYToWorld,
+} from "../lib/mercator";
 import { clearTileCaches } from "../lib/aerialTiles";
 import {
-  planPrefetch,
+  planPrefetchDisk,
   runPrefetch,
   formatBytes,
-  type BBox,
+  type LonLat,
   type PrefetchProgress,
 } from "../lib/prefetch";
 
 // 3Dビュー本体。Three.js のセットアップ、地図的なカメラ操作（MapControls＋画面ボタン）、
-// 毎フレームのクアッドツリー更新、そして事前ロード（オフライン保存）UI を持つ。
+// 毎フレームのクアッドツリー更新、そして事前ロード（中心＋半径でオフライン保存）UI を持つ。
 
 // 画面ボタンで保持する操作状態（押している間 1/-1、毎フレーム適用）。
 type Nav = {
@@ -32,30 +38,40 @@ const ORBIT_SPEED = 0.025;
 const TILT_SPEED = 0.022;
 const DOLLY_BASE = 1.04;
 
-// 事前ロードで選べる最大ズーム（DEMは z14 まで、航空写真はそれ以上も高精細化）。
+// 事前ロードのパラメータ範囲。
 const PREFETCH_Z_MIN = 12;
 const PREFETCH_Z_MAX = 16;
 const PREFETCH_Z_DEFAULT = 14;
+const RADIUS_MIN = 1;
+const RADIUS_MAX = 50;
+const RADIUS_DEFAULT = 8;
 
 export default function MapView() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [stats, setStats] = useState<TerrainStats | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
   const navRef = useRef<Nav>({ panX: 0, panZ: 0, orbit: 0, tilt: 0, dolly: 0, home: false });
-  // effect 内で作る「現在の表示範囲を返す」関数の橋渡し。
-  const apiRef = useRef<{ getViewBounds: () => BBox | null } | null>(null);
+  // effect 内で作る「現在の中心取得」「範囲プレビュー描画」を橋渡しする。
+  const apiRef = useRef<{
+    getCenter: () => LonLat | null;
+    setPreview: (center: LonLat | null, radiusKm: number) => void;
+  } | null>(null);
 
   // --- 事前ロード（オフライン保存）UI の状態 --- //
   const [panelOpen, setPanelOpen] = useState(false);
   const [maxZ, setMaxZ] = useState(PREFETCH_Z_DEFAULT);
-  const [bbox, setBbox] = useState<BBox | null>(null);
+  const [radiusKm, setRadiusKm] = useState(RADIUS_DEFAULT);
+  const [center, setCenter] = useState<LonLat | null>(null);
   const [progress, setProgress] = useState<PrefetchProgress | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [storageUsage, setStorageUsage] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // 選択中の範囲＋詳細度からダウンロード計画（タイル数・サイズ目安）を作る。
-  const plan = useMemo(() => (bbox ? planPrefetch(bbox, maxZ) : null), [bbox, maxZ]);
+  // 中心＋半径＋詳細度からダウンロード計画（タイル数・サイズ目安）を作る。
+  const plan = useMemo(
+    () => (center ? planPrefetchDisk(center, radiusKm, maxZ) : null),
+    [center, radiusKm, maxZ],
+  );
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -64,7 +80,7 @@ export default function MapView() {
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      logarithmicDepthBuffer: true, // 数km〜数千kmの広いレンジで z-fighting を防ぐ
+      logarithmicDepthBuffer: true,
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
@@ -99,46 +115,39 @@ export default function MapView() {
     const terrain = new QuadtreeTerrain(renderer);
     scene.add(terrain.group);
 
-    // --- 現在の表示範囲(bbox)を、画面四隅のレイを地表(y=0)へ落として求める --- //
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const ray = new THREE.Raycaster();
-    const getViewBounds = (): BBox | null => {
-      const camDist = camera.position.distanceTo(controls.target);
-      // 地平を向くレイが無限遠へ飛ぶのを防ぐ、地表での最大到達半径(ワールドkm)。
-      const maxR = Math.min(1500, camDist * 3 + 20);
-      const corners: [number, number][] = [
-        [-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0],
-      ];
-      let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
-      for (const [nx, ny] of corners) {
-        ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
-        const hit = new THREE.Vector3();
-        const ok = ray.ray.intersectPlane(groundPlane, hit);
-        let p: THREE.Vector3;
-        if (ok && hit.distanceTo(camera.position) <= maxR * 1.2) {
-          p = hit;
-        } else {
-          p = camera.position.clone().addScaledVector(ray.ray.direction, maxR);
-          p.y = 0;
-        }
-        // 注視点からの距離を maxR で頭打ちにして範囲を有界化。
-        const dx = p.x - controls.target.x;
-        const dz = p.z - controls.target.z;
-        const d = Math.hypot(dx, dz);
-        if (d > maxR) {
-          p.x = controls.target.x + (dx * maxR) / d;
-          p.z = controls.target.z + (dz * maxR) / d;
-        }
-        const { lat, lon } = worldToLonLat(p.x, p.z);
-        latMin = Math.min(latMin, lat);
-        latMax = Math.max(latMax, lat);
-        lonMin = Math.min(lonMin, lon);
-        lonMax = Math.max(lonMax, lon);
-      }
-      if (!Number.isFinite(latMin)) return null;
-      return { latMin, latMax, lonMin, lonMax };
+    // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
+    const ringPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 128; i++) {
+      const t = (i / 128) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(Math.cos(t), 0, Math.sin(t)));
+    }
+    const previewRing = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(ringPts),
+      new THREE.LineBasicMaterial({ color: 0x5bd6ff, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    previewRing.renderOrder = 999;
+    previewRing.visible = false;
+    scene.add(previewRing);
+
+    const getCenter = (): LonLat | null => {
+      // カメラの注視点（地面上の見ている中心）を経緯度に。
+      return worldToLonLat(controls.target.x, controls.target.z);
     };
-    apiRef.current = { getViewBounds };
+    const setPreview = (c: LonLat | null, rKm: number) => {
+      if (!c) {
+        previewRing.visible = false;
+        return;
+      }
+      const cx = mercXToWorld(lonToMercX(c.lon));
+      const cz = mercYToWorld(latToMercY(c.lat));
+      // 半径(km)→ワールド単位: 中心から rKm 北の点までのワールド距離で換算。
+      const nz = mercYToWorld(latToMercY(c.lat + rKm / 111.32));
+      const rWorld = Math.abs(nz - cz);
+      previewRing.position.set(cx, 1, cz);
+      previewRing.scale.set(rWorld, 1, rWorld);
+      previewRing.visible = true;
+    };
+    apiRef.current = { getCenter, setPreview };
 
     // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
     const UP = new THREE.Vector3(0, 1, 0);
@@ -224,12 +233,19 @@ export default function MapView() {
       window.removeEventListener("resize", onResize);
       ro.disconnect();
       apiRef.current = null;
+      previewRing.geometry.dispose();
+      (previewRing.material as THREE.Material).dispose();
       controls.dispose();
       terrain.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
   }, []);
+
+  // 中心・半径・パネル開閉に応じてプレビュー円を更新する。
+  useEffect(() => {
+    apiRef.current?.setPreview(panelOpen ? center : null, radiusKm);
+  }, [center, radiusKm, panelOpen]);
 
   // --- 画面ボタンのプレス/リリース --- //
   const start = (patch: Partial<Nav>) => (e: React.PointerEvent) => {
@@ -254,8 +270,8 @@ export default function MapView() {
     setPanelOpen(true);
     refreshStorage();
   };
-  const captureView = () => {
-    setBbox(apiRef.current?.getViewBounds() ?? null);
+  const captureCenter = () => {
+    setCenter(apiRef.current?.getCenter() ?? null);
   };
   const startDownload = async () => {
     if (!plan || plan.jobs.length === 0) return;
@@ -289,7 +305,6 @@ export default function MapView() {
         </div>
       )}
 
-      {/* オフライン保存パネルを開くボタン（右上） */}
       <button className="save-open" title="オフライン保存（事前ロード）" onClick={openPanel}>
         ⤓ 保存
       </button>
@@ -329,7 +344,7 @@ export default function MapView() {
         </div>
       </div>
 
-      {/* オフライン保存パネル */}
+      {/* オフライン保存パネル（中心＋半径） */}
       {panelOpen && (
         <div className="save-panel">
           <div className="save-head">
@@ -338,9 +353,31 @@ export default function MapView() {
           </div>
 
           <p className="save-note">
-            いま画面に写っている範囲を、選んだ詳細度までダウンロードして保存します。
+            画面中央（見ている地点）を中心に、指定した半径・詳細度ぶんを保存します。
             保存後は通信なしでもその範囲を3D表示できます。
           </p>
+
+          <button className="save-btn" onClick={captureCenter} disabled={downloading}>
+            画面中央を中心地点にする
+          </button>
+
+          {center && (
+            <div className="save-center">
+              中心: {center.lat.toFixed(4)}°, {center.lon.toFixed(4)}°
+            </div>
+          )}
+
+          <label className="save-field">
+            <span>半径: {radiusKm} km</span>
+            <input
+              type="range"
+              min={RADIUS_MIN}
+              max={RADIUS_MAX}
+              value={radiusKm}
+              disabled={downloading}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+            />
+          </label>
 
           <label className="save-field">
             <span>最大ズーム（詳細度）: z{maxZ}{maxZ > 14 ? "（標高は z14 まで）" : ""}</span>
@@ -354,14 +391,10 @@ export default function MapView() {
             />
           </label>
 
-          <button className="save-btn" onClick={captureView} disabled={downloading}>
-            現在の表示範囲を対象にする
-          </button>
-
           {plan && (
             <div className="save-plan">
               {plan.jobs.length === 0 ? (
-                <span className="save-warn">この範囲は日本の範囲外です。</span>
+                <span className="save-warn">この中心は日本の範囲外です。</span>
               ) : (
                 <>
                   <div>
@@ -369,7 +402,7 @@ export default function MapView() {
                   </div>
                   <div>サイズ目安: 約 {formatBytes(plan.estBytes)}</div>
                   {plan.truncated && (
-                    <div className="save-warn">範囲が広すぎるため上限で打ち切りました。ズームインして範囲を絞ってください。</div>
+                    <div className="save-warn">範囲が広すぎるため上限で打ち切りました。半径を小さくしてください。</div>
                   )}
                 </>
               )}

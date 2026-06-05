@@ -4,11 +4,26 @@
 // Cache API に確保する。取得には demTiles/aerialTiles の prefetch 関数を使うので、
 // オフライン時は通常の描画パスがそのままキャッシュから読める（特別な分岐は不要）。
 
-import { type TileId, lonLatToTile, JAPAN_BBOX } from "./mercator";
+import { type TileId, lonLatToTile, tileLonLatBounds, JAPAN_BBOX } from "./mercator";
 import { prefetchDemTile, DEM_MAX_Z } from "./demTiles";
 import { prefetchAerialTile, AERIAL_MAX_Z } from "./aerialTiles";
 
 export type BBox = { latMin: number; latMax: number; lonMin: number; lonMax: number };
+export type LonLat = { lat: number; lon: number };
+
+const EQUATOR_KM = 40075.016686;
+
+/** 2点間の概略距離(km, Haversine)。 */
+function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const p = Math.PI / 180;
+  const dLat = (bLat - aLat) * p;
+  const dLon = (bLon - aLon) * p;
+  const la1 = aLat * p;
+  const la2 = bLat * p;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
 
 // 概観も一緒に確保しておく最小ズーム（オフラインで引いた時に地図が出るように）。
 const MIN_PREFETCH_Z = 5;
@@ -56,6 +71,59 @@ export function planPrefetch(bbox: BBox, maxZ: number): PrefetchPlan {
     const yMax = Math.max(nw.y, se.y);
     for (let x = xMin; x <= xMax; x++) {
       for (let y = yMin; y <= yMax; y++) {
+        if (z <= AERIAL_MAX_Z) {
+          jobs.push({ kind: "aerial", z, x, y });
+          aerialCount++;
+        }
+        if (z <= DEM_MAX_Z) {
+          jobs.push({ kind: "dem", z, x, y });
+          demCount++;
+        }
+        if (jobs.length >= MAX_PLAN_TILES) {
+          truncated = true;
+          break outer;
+        }
+      }
+    }
+  }
+  const estBytes = demCount * DEM_AVG_BYTES + aerialCount * AERIAL_AVG_BYTES;
+  return { jobs, demCount, aerialCount, estBytes, truncated };
+}
+
+/** 中心＋半径(km)の円に重なるタイルを列挙する。bbox方式より無駄な隅を省ける。 */
+export function planPrefetchDisk(center: LonLat, radiusKm: number, maxZ: number): PrefetchPlan {
+  const jobs: Job[] = [];
+  let demCount = 0;
+  let aerialCount = 0;
+  let truncated = false;
+
+  const cosLat = Math.max(0.05, Math.cos((center.lat * Math.PI) / 180));
+  const dLat = radiusKm / 111.32;
+  const dLon = radiusKm / (111.32 * cosLat);
+  const bbox = clampToJapan({
+    latMin: center.lat - dLat,
+    latMax: center.lat + dLat,
+    lonMin: center.lon - dLon,
+    lonMax: center.lon + dLon,
+  });
+  if (!bbox) return { jobs, demCount, aerialCount, estBytes: 0, truncated };
+
+  outer: for (let z = MIN_PREFETCH_Z; z <= maxZ; z++) {
+    // タイルの地上幅(km)。半径判定に半対角ぶんの余裕を足して縁のタイルも含める。
+    const tileWidthKm = (EQUATOR_KM * cosLat) / 2 ** z;
+    const margin = tileWidthKm * 0.71;
+    const nw = lonLatToTile(bbox.latMax, bbox.lonMin, z);
+    const se = lonLatToTile(bbox.latMin, bbox.lonMax, z);
+    const xMin = Math.min(nw.x, se.x);
+    const xMax = Math.max(nw.x, se.x);
+    const yMin = Math.min(nw.y, se.y);
+    const yMax = Math.max(nw.y, se.y);
+    for (let x = xMin; x <= xMax; x++) {
+      for (let y = yMin; y <= yMax; y++) {
+        const b = tileLonLatBounds(z, x, y);
+        const tcLat = (b.latN + b.latS) / 2;
+        const tcLon = (b.lonW + b.lonE) / 2;
+        if (haversineKm(center.lat, center.lon, tcLat, tcLon) > radiusKm + margin) continue;
         if (z <= AERIAL_MAX_Z) {
           jobs.push({ kind: "aerial", z, x, y });
           aerialCount++;
