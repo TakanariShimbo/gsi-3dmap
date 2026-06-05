@@ -316,7 +316,7 @@ export default function MapView() {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
-      terrain.update(camera, mount.clientHeight, camDist);
+      // 円盤クリップは terrain.update より前に設定（refine が当該フレームの半径を使う）。
       if (celestialActive) {
         // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
         const tx = controls.target.x;
@@ -332,6 +332,7 @@ export default function MapView() {
           setSunObserver(worldToLonLat(tx, tz));
         }
       }
+      terrain.update(camera, mount.clientHeight, camDist);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
