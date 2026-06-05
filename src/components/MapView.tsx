@@ -350,6 +350,8 @@ export default function MapView() {
       controls.dispose();
       terrain.dispose();
       renderer.dispose();
+      // HMR等で作り直す際、古いWebGLコンテキストを明示解放（コンテキスト枯渇＝真っ黒の予防）。
+      renderer.forceContextLoss();
       mount.removeChild(renderer.domElement);
     };
   }, []);
