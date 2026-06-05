@@ -77,6 +77,7 @@ export default function MapView() {
     setBasemap: (layer: Basemap) => void;
     setCelestialActive: (on: boolean) => void;
     setCelestialSky: (sky: SkyState | null, sunTrack: SkyBody[], moonTrack: SkyBody[]) => void;
+    setFreeLook: (on: boolean) => void;
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
   const homeLocRef = useRef<LonLat | null>(null);
@@ -94,6 +95,8 @@ export default function MapView() {
   const [showRemote, setShowRemote] = useState(true);
   // 中心マーカー（視点中心＝画面中央の目印）。画面中央のレティクルで表示する。
   const [showCenter, setShowCenter] = useState(true);
+  // 視点フリーモード（解像度・太陽月・円盤を凍結して視点だけ動かす）。
+  const [freeLook, setFreeLook] = useState(false);
   // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
   const [openSec, setOpenSec] = useState<Record<string, boolean>>({
     search: true,
@@ -187,6 +190,11 @@ export default function MapView() {
     const celestialCenter = new THREE.Vector3();
     let lastObsWorld: THREE.Vector2 | null = null; // 直近に sky を計算した中心(world XZ)
 
+    // 視点フリーモード: ON の間は地形LOD・円盤・太陽月を凍結し、カメラだけ動かせる。
+    // OFF にしたら、ON にした瞬間の視点へ戻す。
+    let freeLookActive = false;
+    let savedPose: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+
     // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
     const ringPts: THREE.Vector3[] = [];
     for (let i = 0; i <= 128; i++) {
@@ -248,6 +256,18 @@ export default function MapView() {
         }
       },
       setCelestialSky: (sky, sunTrack, moonTrack) => celestial.setSky(sky, sunTrack, moonTrack),
+      setFreeLook: (on) => {
+        if (on) {
+          savedPose = { pos: camera.position.clone(), target: controls.target.clone() };
+          freeLookActive = true;
+        } else {
+          freeLookActive = false;
+          if (savedPose) {
+            flyGoal = savedPose; // モード前の視点へ滑らかに戻す
+            savedPose = null;
+          }
+        }
+      },
     };
 
     // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
@@ -324,23 +344,26 @@ export default function MapView() {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
-      // 円盤クリップは terrain.update より前に設定（refine が当該フレームの半径を使う）。
-      if (celestialActive) {
-        // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
-        const tx = controls.target.x;
-        const tz = controls.target.z;
-        celestialCenter.set(tx, controls.target.y, tz);
-        const diskR = THREE.MathUtils.clamp(camera.position.distanceTo(celestialCenter) * 0.5, 2, 4000);
-        terrain.setClip({ x: tx, z: tz }, diskR);
-        celestial.place(celestialCenter, diskR * 1.1);
-        // 中心が十分動いたら sky(太陽月の方位高度・軌跡)を計算し直す。
-        const thr = Math.max(1, diskR * 0.08);
-        if (!lastObsWorld || Math.hypot(tx - lastObsWorld.x, tz - lastObsWorld.y) > thr) {
-          lastObsWorld = (lastObsWorld ?? new THREE.Vector2()).set(tx, tz);
-          setSunObserver(worldToLonLat(tx, tz));
+      // 視点フリー中は、地形LOD・円盤・太陽月の連動を凍結（カメラだけ動かす）。
+      if (!freeLookActive) {
+        // 円盤クリップは terrain.update より前に設定（refine が当該フレームの半径を使う）。
+        if (celestialActive) {
+          // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
+          const tx = controls.target.x;
+          const tz = controls.target.z;
+          celestialCenter.set(tx, controls.target.y, tz);
+          const diskR = THREE.MathUtils.clamp(camera.position.distanceTo(celestialCenter) * 0.5, 2, 4000);
+          terrain.setClip({ x: tx, z: tz }, diskR);
+          celestial.place(celestialCenter, diskR * 1.1);
+          // 中心が十分動いたら sky(太陽月の方位高度・軌跡)を計算し直す。
+          const thr = Math.max(1, diskR * 0.08);
+          if (!lastObsWorld || Math.hypot(tx - lastObsWorld.x, tz - lastObsWorld.y) > thr) {
+            lastObsWorld = (lastObsWorld ?? new THREE.Vector2()).set(tx, tz);
+            setSunObserver(worldToLonLat(tx, tz));
+          }
         }
+        terrain.update(camera, mount.clientHeight, camDist);
       }
-      terrain.update(camera, mount.clientHeight, camDist);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
@@ -512,6 +535,13 @@ export default function MapView() {
     );
   };
 
+  // 視点フリーの切替（ONで凍結、OFFでモード前の視点へ戻す）。
+  const toggleFreeLook = () => {
+    const nv = !freeLook;
+    setFreeLook(nv);
+    apiRef.current?.setFreeLook(nv);
+  };
+
   // ホーム: 現在地が判明していればそこへ、なければ日本全体ビューへ。
   const goHome = () => {
     if (homeLocRef.current) apiRef.current?.flyTo(homeLocRef.current);
@@ -572,6 +602,15 @@ export default function MapView() {
         onClick={() => setSidebarOpen((o) => !o)}
       >
         ☰
+      </button>
+
+      {/* 視点フリー（解像度・太陽月を凍結して視点だけ動かす。解除でモード前の視点へ戻る） */}
+      <button
+        className={`freelook-toggle${freeLook ? " is-active" : ""}`}
+        title="視点フリー：地図解像度・太陽・月を固定したまま視点だけ動かす。解除すると元の視点へ戻ります"
+        onClick={toggleFreeLook}
+      >
+        {freeLook ? "視点フリー：ON" : "視点フリー"}
       </button>
 
       {/* サイドバー背景（タップで閉じる） */}

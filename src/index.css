@@ -81,6 +81,32 @@ body,
   background: rgba(34, 46, 62, 0.85);
 }
 
+/* 視点フリー切替（メニューボタンの右） */
+.freelook-toggle {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: calc(max(8px, env(safe-area-inset-left, 8px)) + 50px);
+  height: 42px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: #e6edf5;
+  background: rgba(18, 24, 33, 0.78);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 10px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.freelook-toggle:hover {
+  background: rgba(34, 46, 62, 0.85);
+}
+.freelook-toggle.is-active {
+  color: #fff;
+  background: rgba(48, 100, 160, 0.92);
+  border-color: rgba(120, 180, 240, 0.65);
+}
+
 /* --- サイドバー --- */
 .sidebar-scrim {
   position: absolute;
