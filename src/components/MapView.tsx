@@ -80,7 +80,7 @@ export default function MapView() {
     setPreview: (center: LonLat | null, radiusKm: number) => void;
     flyTo: (c: LonLat) => void;
     setBasemap: (layer: Basemap) => void;
-    setCelestialView: (center: { x: number; z: number } | null) => void;
+    setCelestialActive: (on: boolean) => void;
     setCelestialSky: (sky: SkyState | null, sunTrack: SkyBody[], moonTrack: SkyBody[]) => void;
   } | null>(null);
 
@@ -171,11 +171,13 @@ export default function MapView() {
     const terrain = new QuadtreeTerrain(renderer);
     scene.add(terrain.group);
 
-    // 太陽・月の天球オーバーレイ（観測点中心）。半径はカメラ距離に連動（毎フレーム算出）。
+    // 太陽・月の天球オーバーレイ。中心＝視点中心(controls.target)に毎フレーム追従し、
+    // 半径はカメラ距離に連動。パン・ズームの両方に円盤と太陽月が連動する。
     const celestial = new CelestialLayer();
     scene.add(celestial.group);
-    let celestialCenter: THREE.Vector3 | null = null;
-    let celestialCenterXZ: { x: number; z: number } | null = null;
+    let celestialActive = false;
+    const celestialCenter = new THREE.Vector3();
+    let lastObsWorld: THREE.Vector2 | null = null; // 直近に sky を計算した中心(world XZ)
 
     // --- 事前ロード範囲（中心＋半径）のプレビュー円。地形に隠れないよう常に手前に描く --- //
     const ringPts: THREE.Vector3[] = [];
@@ -229,11 +231,13 @@ export default function MapView() {
       setPreview,
       flyTo,
       setBasemap: (layer) => terrain.setBasemap(layer),
-      setCelestialView: (w) => {
-        celestialCenter = w ? new THREE.Vector3(w.x, 0, w.z) : null;
-        celestialCenterXZ = w;
-        celestial.setVisible(!!w);
-        if (!w) terrain.setClip(null, 0); // 解除時は全面表示へ
+      setCelestialActive: (on) => {
+        celestialActive = on;
+        celestial.setVisible(on);
+        if (!on) {
+          terrain.setClip(null, 0); // 解除時は全面表示へ
+          lastObsWorld = null;
+        }
       },
       setCelestialSky: (sky, sunTrack, moonTrack) => celestial.setSky(sky, sunTrack, moonTrack),
     };
@@ -313,11 +317,20 @@ export default function MapView() {
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
       terrain.update(camera, mount.clientHeight, camDist);
-      if (celestialCenter && celestialCenterXZ) {
-        // 半径をカメラ距離に連動。円盤を切り抜き、太陽月はその少し外側のドームに。
+      if (celestialActive) {
+        // 中心＝視点中心。半径＝カメラ距離連動。パン・ズームに円盤と太陽月が追従。
+        const tx = controls.target.x;
+        const tz = controls.target.z;
+        celestialCenter.set(tx, controls.target.y, tz);
         const diskR = THREE.MathUtils.clamp(camera.position.distanceTo(celestialCenter) * 0.5, 2, 4000);
-        terrain.setClip(celestialCenterXZ, diskR);
+        terrain.setClip({ x: tx, z: tz }, diskR);
         celestial.place(celestialCenter, diskR * 1.1);
+        // 中心が十分動いたら sky(太陽月の方位高度・軌跡)を計算し直す。
+        const thr = Math.max(1, diskR * 0.08);
+        if (!lastObsWorld || Math.hypot(tx - lastObsWorld.x, tz - lastObsWorld.y) > thr) {
+          lastObsWorld = (lastObsWorld ?? new THREE.Vector2()).set(tx, tz);
+          setSunObserver(worldToLonLat(tx, tz));
+        }
       }
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
@@ -364,21 +377,18 @@ export default function MapView() {
     apiRef.current?.setBasemap(basemapById(basemapId));
   }, [basemapId]);
 
-  // 太陽・月: 観測点＋日時から sky/軌跡を計算し、地形の円盤クリップと天球を反映。
+  // 太陽・月: 観測点(=視点中心)＋日時から sky/軌跡を計算して反映。中心追従はループ側。
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
     if (!celestialOn || !sunObserver || !skyInfo) {
-      api.setCelestialView(null);
+      api.setCelestialActive(false);
       return;
     }
     const sunTrack = computeTrack(skyDate, sunObserver.lat, sunObserver.lon, "sun");
     const moonTrack = computeTrack(skyDate, sunObserver.lat, sunObserver.lon, "moon");
     api.setCelestialSky(skyInfo, sunTrack, moonTrack);
-    api.setCelestialView({
-      x: mercXToWorld(lonToMercX(sunObserver.lon)),
-      z: mercYToWorld(latToMercY(sunObserver.lat)),
-    });
+    api.setCelestialActive(true);
   }, [celestialOn, sunObserver, skyDate, skyInfo]);
 
   // --- 画面ボタンのプレス/リリース --- //
@@ -452,7 +462,6 @@ export default function MapView() {
     setCelestialOn(on);
     if (on && !sunObserver) setSunObserver(apiRef.current?.getCenter() ?? null);
   };
-  const captureSunObserver = () => setSunObserver(apiRef.current?.getCenter() ?? null);
   const setSunNow = () => {
     const d = new Date();
     setDateStr(toDateInput(d));
@@ -605,12 +614,13 @@ export default function MapView() {
 
           {celestialOn && (
             <>
-              <button className="save-btn" onClick={captureSunObserver}>
-                画面中央を観測地点にする
-              </button>
+              <p className="save-note">
+                画面中央（見ている地点）を中心に地形を円盤で切り抜き、外周に太陽・月を表示します。
+                パン・ズームに追従します。
+              </p>
               {sunObserver && (
                 <div className="save-center">
-                  観測点: {sunObserver.lat.toFixed(4)}°, {sunObserver.lon.toFixed(4)}°
+                  中心: {sunObserver.lat.toFixed(4)}°, {sunObserver.lon.toFixed(4)}°
                 </div>
               )}
 
