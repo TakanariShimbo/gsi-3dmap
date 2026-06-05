@@ -1,12 +1,12 @@
 // 事前ロード（オフライン用タイルの一括ダウンロード）。
 //
-// 指定 bbox を MIN_PREFETCH_Z〜maxZ の各ズームでタイル化し、DEM と航空写真を
-// Cache API に確保する。取得には demTiles/aerialTiles の prefetch 関数を使うので、
+// 中心＋半径を MIN_PREFETCH_Z〜maxZ の各ズームでタイル化し、DEM と選択中ベースマップを
+// Cache API に確保する。取得には demTiles/basemaps の prefetch 関数を使うので、
 // オフライン時は通常の描画パスがそのままキャッシュから読める（特別な分岐は不要）。
 
 import { type TileId, lonLatToTile, tileLonLatBounds, JAPAN_BBOX } from "./mercator";
 import { prefetchDemTile, DEM_MAX_Z } from "./demTiles";
-import { prefetchAerialTile, AERIAL_MAX_Z } from "./aerialTiles";
+import { prefetchBasemapTile, type Basemap } from "./basemaps";
 
 export type BBox = { latMin: number; latMax: number; lonMin: number; lonMax: number };
 export type LonLat = { lat: number; lon: number };
@@ -53,45 +53,13 @@ function clampToJapan(b: BBox): BBox | null {
   return { latMin, latMax, lonMin, lonMax };
 }
 
-/** bbox と最大ズームから、ダウンロードするタイル一覧（ズーム昇順）を作る。fetch はしない。 */
-export function planPrefetch(bbox: BBox, maxZ: number): PrefetchPlan {
-  const jobs: Job[] = [];
-  let demCount = 0;
-  let aerialCount = 0;
-  let truncated = false;
-  const clamped = clampToJapan(bbox);
-  if (!clamped) return { jobs, demCount, aerialCount, estBytes: 0, truncated };
-
-  outer: for (let z = MIN_PREFETCH_Z; z <= maxZ; z++) {
-    const nw = lonLatToTile(clamped.latMax, clamped.lonMin, z); // 北西
-    const se = lonLatToTile(clamped.latMin, clamped.lonMax, z); // 南東
-    const xMin = Math.min(nw.x, se.x);
-    const xMax = Math.max(nw.x, se.x);
-    const yMin = Math.min(nw.y, se.y);
-    const yMax = Math.max(nw.y, se.y);
-    for (let x = xMin; x <= xMax; x++) {
-      for (let y = yMin; y <= yMax; y++) {
-        if (z <= AERIAL_MAX_Z) {
-          jobs.push({ kind: "aerial", z, x, y });
-          aerialCount++;
-        }
-        if (z <= DEM_MAX_Z) {
-          jobs.push({ kind: "dem", z, x, y });
-          demCount++;
-        }
-        if (jobs.length >= MAX_PLAN_TILES) {
-          truncated = true;
-          break outer;
-        }
-      }
-    }
-  }
-  const estBytes = demCount * DEM_AVG_BYTES + aerialCount * AERIAL_AVG_BYTES;
-  return { jobs, demCount, aerialCount, estBytes, truncated };
-}
-
-/** 中心＋半径(km)の円に重なるタイルを列挙する。bbox方式より無駄な隅を省ける。 */
-export function planPrefetchDisk(center: LonLat, radiusKm: number, maxZ: number): PrefetchPlan {
+/** 中心＋半径(km)の円に重なるタイルを列挙する。layer はベースマップの最大ズーム上限に使う。 */
+export function planPrefetchDisk(
+  center: LonLat,
+  radiusKm: number,
+  maxZ: number,
+  layer: Basemap,
+): PrefetchPlan {
   const jobs: Job[] = [];
   let demCount = 0;
   let aerialCount = 0;
@@ -124,7 +92,7 @@ export function planPrefetchDisk(center: LonLat, radiusKm: number, maxZ: number)
         const tcLat = (b.latN + b.latS) / 2;
         const tcLon = (b.lonW + b.lonE) / 2;
         if (haversineKm(center.lat, center.lon, tcLat, tcLon) > radiusKm + margin) continue;
-        if (z <= AERIAL_MAX_Z) {
+        if (z <= layer.maxZoom) {
           jobs.push({ kind: "aerial", z, x, y });
           aerialCount++;
         }
@@ -145,9 +113,10 @@ export function planPrefetchDisk(center: LonLat, radiusKm: number, maxZ: number)
 
 export type PrefetchProgress = { done: number; total: number; failed: number };
 
-/** プランを並列ダウンロード。onProgress で進捗、signal で中断できる。 */
+/** プランを並列ダウンロード。layer は航空写真/地図ジョブの取得先。signal で中断できる。 */
 export async function runPrefetch(
   plan: PrefetchPlan,
+  layer: Basemap,
   onProgress: (p: PrefetchProgress) => void,
   signal?: AbortSignal,
 ): Promise<PrefetchProgress> {
@@ -164,7 +133,7 @@ export async function runPrefetch(
       const ok =
         job.kind === "dem"
           ? await prefetchDemTile(job.z, job.x, job.y)
-          : await prefetchAerialTile(job.z, job.x, job.y);
+          : await prefetchBasemapTile(layer, job.z, job.x, job.y);
       if (!ok) failed++;
       done++;
       onProgress({ done, total, failed });

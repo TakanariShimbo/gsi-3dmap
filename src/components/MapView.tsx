@@ -9,7 +9,13 @@ import {
   mercXToWorld,
   mercYToWorld,
 } from "../lib/mercator";
-import { clearTileCaches } from "../lib/aerialTiles";
+import {
+  BASEMAPS,
+  basemapById,
+  clearTileCaches,
+  type Basemap,
+} from "../lib/basemaps";
+import { searchPlaces, type GeoResult } from "../lib/geocode";
 import {
   planPrefetchDisk,
   runPrefetch,
@@ -51,11 +57,19 @@ export default function MapView() {
   const [stats, setStats] = useState<TerrainStats | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
   const navRef = useRef<Nav>({ panX: 0, panZ: 0, orbit: 0, tilt: 0, dolly: 0, home: false });
-  // effect 内で作る「現在の中心取得」「範囲プレビュー描画」を橋渡しする。
+  // effect 内で作る各種カメラ/地形操作を React 側へ橋渡しする。
   const apiRef = useRef<{
     getCenter: () => LonLat | null;
     setPreview: (center: LonLat | null, radiusKm: number) => void;
+    flyTo: (c: LonLat) => void;
+    setBasemap: (layer: Basemap) => void;
   } | null>(null);
+
+  // --- ベースマップ・検索の状態 --- //
+  const [basemapId, setBasemapId] = useState(BASEMAPS[0].id);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GeoResult[]>([]);
+  const [searching, setSearching] = useState(false);
 
   // --- 事前ロード（オフライン保存）UI の状態 --- //
   const [panelOpen, setPanelOpen] = useState(false);
@@ -67,10 +81,10 @@ export default function MapView() {
   const [storageUsage, setStorageUsage] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // 中心＋半径＋詳細度からダウンロード計画（タイル数・サイズ目安）を作る。
+  // 中心＋半径＋詳細度＋ベースマップからダウンロード計画（タイル数・サイズ目安）を作る。
   const plan = useMemo(
-    () => (center ? planPrefetchDisk(center, radiusKm, maxZ) : null),
-    [center, radiusKm, maxZ],
+    () => (center ? planPrefetchDisk(center, radiusKm, maxZ, basemapById(basemapId)) : null),
+    [center, radiusKm, maxZ, basemapId],
   );
 
   useEffect(() => {
@@ -147,13 +161,46 @@ export default function MapView() {
       previewRing.scale.set(rWorld, 1, rWorld);
       previewRing.visible = true;
     };
-    apiRef.current = { getCenter, setPreview };
+
+    // 指定地点へ滑らかに移動（視線方向を保ったまま一定距離まで寄る）。applyNav が補間する。
+    let flyGoal: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+    const flyTo = (c: LonLat) => {
+      const target = new THREE.Vector3(
+        mercXToWorld(lonToMercX(c.lon)),
+        0,
+        mercYToWorld(latToMercY(c.lat)),
+      );
+      const dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 1, 1);
+      dir.setLength(25); // 到達時のカメラ距離(km)
+      flyGoal = { pos: target.clone().add(dir), target };
+    };
+
+    apiRef.current = {
+      getCenter,
+      setPreview,
+      flyTo,
+      setBasemap: (layer) => terrain.setBasemap(layer),
+    };
 
     // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
     const UP = new THREE.Vector3(0, 1, 0);
     const initPos = camera.position.clone();
     const initTarget = controls.target.clone();
     const applyNav = () => {
+      if (flyGoal) {
+        camera.position.lerp(flyGoal.pos, 0.12);
+        controls.target.lerp(flyGoal.target, 0.12);
+        if (
+          camera.position.distanceTo(flyGoal.pos) < 0.5 &&
+          controls.target.distanceTo(flyGoal.target) < 0.5
+        ) {
+          camera.position.copy(flyGoal.pos);
+          controls.target.copy(flyGoal.target);
+          flyGoal = null;
+        }
+        return;
+      }
       if (nav.home) {
         camera.position.lerp(initPos, 0.15);
         controls.target.lerp(initTarget, 0.15);
@@ -247,6 +294,11 @@ export default function MapView() {
     apiRef.current?.setPreview(panelOpen ? center : null, radiusKm);
   }, [center, radiusKm, panelOpen]);
 
+  // ベースマップ切替を地形へ反映する。
+  useEffect(() => {
+    apiRef.current?.setBasemap(basemapById(basemapId));
+  }, [basemapId]);
+
   // --- 画面ボタンのプレス/リリース --- //
   const start = (patch: Partial<Nav>) => (e: React.PointerEvent) => {
     e.preventDefault();
@@ -279,7 +331,7 @@ export default function MapView() {
     abortRef.current = controller;
     setDownloading(true);
     setProgress({ done: 0, total: plan.jobs.length, failed: 0 });
-    await runPrefetch(plan, setProgress, controller.signal);
+    await runPrefetch(plan, basemapById(basemapId), setProgress, controller.signal);
     setDownloading(false);
     abortRef.current = null;
     refreshStorage();
@@ -289,6 +341,21 @@ export default function MapView() {
     await clearTileCaches();
     setProgress(null);
     refreshStorage();
+  };
+
+  // --- 検索 → フライト --- //
+  const doSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setSearching(true);
+    const r = await searchPlaces(query);
+    setSearching(false);
+    setResults(r);
+  };
+  const goToResult = (r: GeoResult) => {
+    apiRef.current?.flyTo({ lat: r.lat, lon: r.lon });
+    setResults([]);
+    setQuery(r.title);
   };
 
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
@@ -305,9 +372,46 @@ export default function MapView() {
         </div>
       )}
 
+      {/* 地名・山名検索 → フライト（上中央） */}
+      <div className="search">
+        <form className="search-bar" onSubmit={doSearch}>
+          <input
+            type="search"
+            value={query}
+            placeholder="地名・山名で検索（例: 富士山）"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button type="submit" title="検索" disabled={searching}>
+            {searching ? "…" : "🔍"}
+          </button>
+        </form>
+        {results.length > 0 && (
+          <ul className="search-results">
+            {results.map((r, i) => (
+              <li key={`${r.lat},${r.lon},${i}`}>
+                <button onClick={() => goToResult(r)}>{r.title}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       <button className="save-open" title="オフライン保存（事前ロード）" onClick={openPanel}>
         ⤓ 保存
       </button>
+
+      {/* ベースマップ切替（左下） */}
+      <div className="basemap-switch">
+        {BASEMAPS.map((b) => (
+          <button
+            key={b.id}
+            className={b.id === basemapId ? "is-active" : ""}
+            onClick={() => setBasemapId(b.id)}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
 
       {/* カメラ操作ボタン（右下） */}
       <div className="nav-controls">

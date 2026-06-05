@@ -21,11 +21,11 @@ import {
   JAPAN_BBOX,
 } from "../lib/mercator";
 import { sampleTile } from "../workers/terrainClient";
-import { fetchAerialTile, AERIAL_MAX_Z } from "../lib/aerialTiles";
+import { fetchBasemapTile, DEFAULT_BASEMAP, type Basemap } from "../lib/basemaps";
 
 // --- チューニング定数 --- //
 const MIN_ZOOM = 5; // ルート（日本全体がこの粒度のタイル群で覆われる）
-const MAX_ZOOM = Math.min(16, AERIAL_MAX_Z); // 最大詳細（z16 ≒ 航空写真 約2.4m/px）
+const MAX_ZOOM = 16; // 最大詳細（z16 ≒ 約2.4m/px。全ベースマップが z16 以上に対応）
 const GRID_N = 32; // 1タイルの格子分割数（頂点は 33x33）
 const SPLIT_PX = 384; // 画面上でこの px を超えるタイルは分割
 const MAX_CONCURRENT_LOADS = 6;
@@ -96,6 +96,10 @@ export class QuadtreeTerrain {
   private frame = 0;
   private active = 0;
   private maxAniso: number;
+  // 現在ドレープしているベースマップ。setBasemap で切替（タイルを貼り直す）。
+  private basemap: Basemap;
+  // ベースマップ世代。切替時に +1 し、古い世代の読込結果は捨てる。
+  private gen = 0;
   // ロード待ち（優先度＝画面上の大きさ。大きいタイルを先に）。
   private pending = new Map<Tile, number>();
   // 現在表示中のメッシュを持つタイル（フレーム差分で hide する）。
@@ -103,10 +107,26 @@ export class QuadtreeTerrain {
   private newShown = new Set<Tile>();
   private allTiles = new Set<Tile>();
 
-  constructor(renderer: THREE.WebGLRenderer) {
+  constructor(renderer: THREE.WebGLRenderer, basemap: Basemap = DEFAULT_BASEMAP) {
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
+    this.basemap = basemap;
     this.buildRoots();
     // ルートを先読みして起動直後の空白を短くする。
+    for (const r of this.roots) this.requestLoad(r, Infinity);
+    this.pump();
+  }
+
+  /** ベースマップを切替。全タイルのテクスチャを貼り直す（メッシュ破棄→再ロード）。 */
+  setBasemap(basemap: Basemap): void {
+    if (basemap.id === this.basemap.id) return;
+    this.basemap = basemap;
+    this.gen++;
+    this.pending.clear();
+    this.shown.clear();
+    for (const t of this.allTiles) {
+      if (t.mesh) this.disposeMesh(t);
+      if (t.state !== "loading") t.state = "empty"; // 読込中は世代チェックで弾く
+    }
     for (const r of this.roots) this.requestLoad(r, Infinity);
     this.pump();
   }
@@ -233,11 +253,18 @@ export class QuadtreeTerrain {
   private startLoad(tile: Tile): void {
     tile.state = "loading";
     this.active++;
+    const gen = this.gen; // この読込が始まった時点のベースマップ世代
     Promise.all([
       sampleTile(tile.z, tile.x, tile.y, GRID_N),
-      tile.z <= AERIAL_MAX_Z ? fetchAerialTile(tile.z, tile.x, tile.y) : Promise.resolve(null),
+      fetchBasemapTile(this.basemap, tile.z, tile.x, tile.y),
     ])
       .then(([elev, bitmap]) => {
+        if (gen !== this.gen) {
+          // ベースマップが切替わった後の旧世代結果は捨てて、再ロードできるようにする。
+          bitmap?.close?.();
+          tile.state = "empty";
+          return;
+        }
         const mesh = this.buildMesh(tile, elev, bitmap);
         tile.mesh = mesh;
         mesh.visible = false;

@@ -64,6 +64,108 @@ body,
   pointer-events: none;
 }
 
+/* --- 地名検索（上中央） --- */
+.search {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 120px));
+}
+.search-bar {
+  display: flex;
+  gap: 6px;
+  background: rgba(14, 19, 27, 0.9);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 10px;
+  padding: 4px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  font-size: 14px;
+  color: #e6edf5;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.search-bar input::placeholder {
+  color: #7c8aa0;
+}
+.search-bar button {
+  width: 38px;
+  font-size: 15px;
+  color: #e6edf5;
+  background: rgba(40, 52, 68, 0.9);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.search-results {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: rgba(14, 19, 27, 0.96);
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.search-results li {
+  margin: 0;
+}
+.search-results button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #dbe3ee;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.search-results button:hover {
+  background: rgba(80, 130, 198, 0.25);
+}
+
+/* --- ベースマップ切替（左下、出典の上に重ねる） --- */
+.basemap-switch {
+  position: absolute;
+  left: 8px;
+  bottom: calc(max(8px, env(safe-area-inset-bottom, 8px)) + 30px);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(14, 19, 27, 0.85);
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.basemap-switch button {
+  padding: 6px 9px;
+  font-size: 12px;
+  color: #cdd6e2;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.basemap-switch button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.basemap-switch button.is-active {
+  color: #fff;
+  background: rgba(48, 100, 160, 0.92);
+  border-color: rgba(120, 180, 240, 0.6);
+}
+
 /* --- 画面ナビゲーション操作ボタン（右下） --- */
 .nav-controls {
   position: absolute;
