@@ -142,7 +142,10 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     clearPeakSelection: () => void;
     getPeakSelection: () => { name: string; elevM: number; sx: number; sy: number }[]; // 書き出し用: 選択山の画面座標
     frameSelectView: (lon: number, lat: number, headingDeg: number) => void; // AR山選択: 撮影地点後方上空の俯瞰へ
-    setMapPanLocked: (on: boolean) => void; // AR山選択: パン禁止（回転・ズームは可）
+    frameAimView: (lon: number, lat: number) => void; // AR向き決め: 撮影地点中心の北上俯瞰へ
+    setControlMode: (mode: "map" | "aim" | "orbit") => void; // 地図操作: 通常 / 向き決め / 回転のみ
+    setViewCone: (lon: number, lat: number, headingDeg: number, fovDeg: number) => void; // 視野コーン表示
+    hideViewCone: () => void;
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
   const homeLocRef = useRef<LonLat | null>(null);
@@ -189,9 +192,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // ARウィザードのフェーズ: 写真→撮影地点→撮影情報→向き合わせ→山選択→書き出し。
   const [arStep, setArStep] = useState<ArStep>("upload");
   const [arLoc, setArLoc] = useState<{ lat: number; lon: number } | null>(null); // 撮影地点
-  const [arHeadingDeg, setArHeadingDeg] = useState<number | null>(null); // EXIF撮影方位
-  const [arHasExifFov, setArHasExifFov] = useState(false); // EXIFに画角があったか
-  const [arFovDeg, setArFovDeg] = useState(CAM_FOV_DEFAULT); // 採用する横画角（EXIF or 手入力）
+  const [arHeadingDeg, setArHeadingDeg] = useState<number | null>(null); // 撮影方位（EXIF or ②で設定）
+  const [arFovDeg, setArFovDeg] = useState(CAM_FOV_DEFAULT); // 横画角（EXIF or ②で設定）
   const [arCompositeUrl, setArCompositeUrl] = useState<string | null>(null); // 書き出した合成画像
   const arStepRef = useRef<ArStep>("upload"); // ループから参照
   const arPinXZRef = useRef<{ x: number; z: number } | null>(null); // 撮影地点ピンのワールドXZ
@@ -394,6 +396,80 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     previewRing.visible = false;
     scene.add(previewRing);
 
+    // --- AR向き決め: 撮影地点から「写る方向・範囲」を示す視野コーン（扇形）を地図上に描く --- //
+    const VIEWCONE_SEGS = 28;
+    const VIEWCONE_R = 90; // コーンの長さ(world)
+    const viewConeGeom = new THREE.BufferGeometry();
+    const viewConePos = new Float32Array((VIEWCONE_SEGS + 2) * 3); // 扇形(apex + 弧)を三角扇で
+    viewConeGeom.setAttribute("position", new THREE.BufferAttribute(viewConePos, 3));
+    const viewConeIdx: number[] = [];
+    for (let i = 1; i <= VIEWCONE_SEGS; i++) viewConeIdx.push(0, i, i + 1);
+    viewConeGeom.setIndex(viewConeIdx);
+    const viewCone = new THREE.Mesh(
+      viewConeGeom,
+      new THREE.MeshBasicMaterial({
+        color: 0x5fa0e6,
+        transparent: true,
+        opacity: 0.32,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    viewCone.renderOrder = 998;
+    viewCone.frustumCulled = false;
+    viewCone.visible = false;
+    scene.add(viewCone);
+    // コーンの縁（中心線＋外周）を線で強調。
+    const viewConeEdgeGeom = new THREE.BufferGeometry();
+    const viewConeEdgePos = new Float32Array((VIEWCONE_SEGS + 3) * 3);
+    viewConeEdgeGeom.setAttribute("position", new THREE.BufferAttribute(viewConeEdgePos, 3));
+    const viewConeEdge = new THREE.Line(
+      viewConeEdgeGeom,
+      new THREE.LineBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0.95, depthTest: false }),
+    );
+    viewConeEdge.renderOrder = 999;
+    viewConeEdge.frustumCulled = false;
+    viewConeEdge.visible = false;
+    scene.add(viewConeEdge);
+    // 視野コーンを撮影地点・方向・画角に合わせて作り直す。
+    const updateViewCone = (ex: number, ez: number, headingDeg: number, fovDeg: number) => {
+      const base = sampleSurfaceY(ex, ez) + 3; // 地表より少し上に浮かせて見やすく
+      const half = (Math.min(Math.max(fovDeg, 1), 175) / 2) * (Math.PI / 180);
+      const h0 = (headingDeg * Math.PI) / 180;
+      viewConePos[0] = ex;
+      viewConePos[1] = base;
+      viewConePos[2] = ez;
+      for (let i = 0; i <= VIEWCONE_SEGS; i++) {
+        const a = h0 - half + (2 * half * i) / VIEWCONE_SEGS; // 方位角（0=北=-Z）
+        const x = ex + VIEWCONE_R * Math.sin(a);
+        const z = ez - VIEWCONE_R * Math.cos(a);
+        const o = (i + 1) * 3;
+        viewConePos[o] = x;
+        viewConePos[o + 1] = base;
+        viewConePos[o + 2] = z;
+      }
+      viewConeGeom.attributes.position.needsUpdate = true;
+      viewConeGeom.computeBoundingSphere();
+      // 縁: apex→弧開始→…→弧終端→apex
+      viewConeEdgePos[0] = ex;
+      viewConeEdgePos[1] = base;
+      viewConeEdgePos[2] = ez;
+      for (let i = 0; i <= VIEWCONE_SEGS; i++) {
+        const o = (i + 1) * 3;
+        viewConeEdgePos[o] = viewConePos[(i + 1) * 3];
+        viewConeEdgePos[o + 1] = base;
+        viewConeEdgePos[o + 2] = viewConePos[(i + 1) * 3 + 2];
+      }
+      const last = (VIEWCONE_SEGS + 2) * 3;
+      viewConeEdgePos[last] = ex;
+      viewConeEdgePos[last + 1] = base;
+      viewConeEdgePos[last + 2] = ez;
+      viewConeEdgeGeom.attributes.position.needsUpdate = true;
+      viewConeEdgeGeom.computeBoundingSphere();
+      viewCone.visible = true;
+      viewConeEdge.visible = true;
+    };
+
     const getCenter = (): LonLat | null => {
       // カメラの注視点（地面上の見ている中心）を経緯度に。
       return worldToLonLat(controls.target.x, controls.target.z);
@@ -551,11 +627,32 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         flyGoal = null; // 進行中の fly を止める
         controls.update();
       },
-      // AR山選択中: パン(場所移動)を禁止し、回転(アングル)とズームのみ許可。off で通常へ戻す。
-      setMapPanLocked: (on) => {
-        controls.enablePan = !on;
-        controls.mouseButtons.LEFT = on ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
-        controls.touches.ONE = on ? THREE.TOUCH.ROTATE : THREE.TOUCH.PAN;
+      // 撮影地点を中心に、南上空から北を見下ろす俯瞰（北が上＝向きが読みやすい）。
+      frameAimView: (lon, lat) => {
+        const ex = mercXToWorld(lonToMercX(lon));
+        const ez = mercYToWorld(latToMercY(lat));
+        const h = sampleSurfaceY(ex, ez);
+        controls.target.set(ex, h, ez);
+        camera.position.set(ex, h + 150, ez + 110); // 南(+Z)・上空から北(-Z)を見下ろす
+        camera.up.set(0, 1, 0);
+        flyGoal = null;
+        controls.update();
+      },
+      // 地図操作モード: map=通常 / aim=向き決め(ドラッグで方向、回転パン無効) / orbit=山選択(回転のみ)。
+      setControlMode: (mode) => {
+        controls.enableZoom = true;
+        controls.enablePan = mode === "map";
+        controls.enableRotate = mode !== "aim";
+        const rotateOnLeft = mode === "orbit"; // 山選択は左ドラッグ=回転
+        controls.mouseButtons.LEFT = rotateOnLeft ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+        controls.touches.ONE = rotateOnLeft ? THREE.TOUCH.ROTATE : THREE.TOUCH.PAN;
+      },
+      setViewCone: (lon, lat, headingDeg, fovDeg) => {
+        updateViewCone(mercXToWorld(lonToMercX(lon)), mercYToWorld(latToMercY(lat)), headingDeg, fovDeg);
+      },
+      hideViewCone: () => {
+        viewCone.visible = false;
+        viewConeEdge.visible = false;
       },
       // 書き出し用: 選択中の山頂を画面座標つきで返す（カメラ後方は除外）。
       getPeakSelection: () => {
@@ -689,6 +786,45 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     window.addEventListener("pointermove", onTapMove);
     window.addEventListener("pointerup", onTapUp);
     window.addEventListener("pointercancel", onTapUp);
+
+    // --- AR向き決めフェーズ: 地図をドラッグして撮影方向を指す（撮影地点→カーソルの方位） --- //
+    let aiming = false;
+    const aimFromEvent = (e: PointerEvent) => {
+      const eye = arPinXZRef.current;
+      if (!eye) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      tapNDC.set(
+        ((e.clientX - rect.left) / mount.clientWidth) * 2 - 1,
+        -((e.clientY - rect.top) / mount.clientHeight) * 2 + 1,
+      );
+      camRay.setFromCamera(tapNDC, camera);
+      const hits = camRay.intersectObjects(terrain.group.children, false);
+      let wx: number, wz: number;
+      if (hits.length) {
+        wx = hits[0].point.x;
+        wz = hits[0].point.z;
+      } else if (camRay.ray.intersectPlane(groundPlane, planeHit)) {
+        wx = planeHit.x;
+        wz = planeHit.z;
+      } else return;
+      const dx = wx - eye.x;
+      const dz = wz - eye.z;
+      if (dx * dx + dz * dz < 1e-4) return;
+      setArHeadingDeg((((Math.atan2(dx, -dz) * 180) / Math.PI) + 360) % 360); // 0=北
+    };
+    const onAimDown = (e: PointerEvent) => {
+      if (arStepRef.current !== "params") return;
+      aiming = true;
+      aimFromEvent(e);
+    };
+    const onAimMove = (e: PointerEvent) => {
+      if (aiming && arStepRef.current === "params") aimFromEvent(e);
+    };
+    const onAimUp = () => (aiming = false);
+    renderer.domElement.addEventListener("pointerdown", onAimDown);
+    window.addEventListener("pointermove", onAimMove);
+    window.addEventListener("pointerup", onAimUp);
+    window.addEventListener("pointercancel", onAimUp);
 
     // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
     const UP = new THREE.Vector3(0, 1, 0);
@@ -889,10 +1025,18 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       window.removeEventListener("pointermove", onTapMove);
       window.removeEventListener("pointerup", onTapUp);
       window.removeEventListener("pointercancel", onTapUp);
+      renderer.domElement.removeEventListener("pointerdown", onAimDown);
+      window.removeEventListener("pointermove", onAimMove);
+      window.removeEventListener("pointerup", onAimUp);
+      window.removeEventListener("pointercancel", onAimUp);
       ro.disconnect();
       apiRef.current = null;
       previewRing.geometry.dispose();
       (previewRing.material as THREE.Material).dispose();
+      viewCone.geometry.dispose();
+      (viewCone.material as THREE.Material).dispose();
+      viewConeEdge.geometry.dispose();
+      (viewConeEdge.material as THREE.Material).dispose();
       celestial.dispose();
       skyDome.dispose();
       peaks.dispose();
@@ -937,6 +1081,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   useEffect(() => {
     arStepRef.current = arStep;
   }, [arStep]);
+
+  // 向き決めフェーズ中、視野コーンを撮影地点・方向・画角に合わせて地図上に描画。
+  useEffect(() => {
+    if (appMode === "ar" && arStep === "params" && arLoc) {
+      apiRef.current?.setViewCone(arLoc.lon, arLoc.lat, arHeadingDeg ?? 0, arFovDeg);
+    } else {
+      apiRef.current?.hideViewCone();
+    }
+  }, [appMode, arStep, arLoc, arHeadingDeg, arFovDeg]);
 
   // 初回起動: 現在地が取れればそこへ移動し、ホームの基準にする。取れなければ日本全体ビューのまま。
   useEffect(() => {
@@ -1102,7 +1255,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const exitCameraMode = () => {
     apiRef.current?.exitCamera();
     apiRef.current?.setVerticalExaggeration(mapVex); // 地図用VEXへ戻す（地形再生成）
-    apiRef.current?.setMapPanLocked(false); // 地図は通常操作（パン可）に戻す
+    apiRef.current?.setControlMode("map"); // 地図は通常操作（パン可）に戻す
     setMode("map");
   };
 
@@ -1125,11 +1278,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(URL.createObjectURL(file));
     const exif = await readPhotoExif(file);
-    setArHeadingDeg(exif.headingDeg);
-    const hasFov = exif.hFovDeg != null;
-    setArHasExifFov(hasFov);
-    const fov = hasFov
-      ? THREE.MathUtils.clamp(exif.hFovDeg as number, CAM_FOV_MIN, CAM_FOV_MAX)
+    setArHeadingDeg(exif.headingDeg); // EXIF方位（あれば②でプリセット、なければ後で入力）
+    const fov = exif.hFovDeg != null
+      ? THREE.MathUtils.clamp(exif.hFovDeg, CAM_FOV_MIN, CAM_FOV_MAX)
       : CAM_FOV_DEFAULT;
     setArFovDeg(fov);
     if (exif.lat != null && exif.lon != null) {
@@ -1139,25 +1290,26 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     }
     setArStep("locate"); // 位置の確認/指定フェーズへ（EXIFありは確認、なしは指定）
   };
-  // 撮影地点フェーズの「ここで決定」: 画角があれば合わせる、無ければ情報入力へ。
+  // 撮影地点フェーズの「ここで決定」: 向きと画角をざっくり決めるフェーズへ（常に）。
   const confirmArLocate = () => {
     if (!arLoc) return;
-    if (arHasExifFov) goAlign(arLoc, arHeadingDeg, arFovDeg);
-    else setArStep("params");
+    apiRef.current?.frameAimView(arLoc.lon, arLoc.lat); // 撮影地点中心の北上俯瞰へ
+    apiRef.current?.setControlMode("aim"); // ドラッグ＝方向。回転・パンは無効
+    setArStep("params");
   };
-  // 情報入力フェーズの「次へ」: 入力した画角で合わせる。
+  // 向き・画角フェーズの「次へ」: 決めた向き・画角で一人称(微調整)へ。
   const confirmArParams = () => {
-    if (arLoc) goAlign(arLoc, arHeadingDeg, arFovDeg);
+    if (arLoc) goAlign(arLoc, arHeadingDeg ?? 0, arFovDeg);
   };
   // 最初からやり直す（写真を外して写真選択フェーズへ）。
   const restartAr = () => {
     if (mode === "camera") exitCameraMode();
+    apiRef.current?.setControlMode("map"); // 向き決め/山選択のロックを解除
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(null);
     setArLoc(null);
     arPinXZRef.current = null;
     setArHeadingDeg(null);
-    setArHasExifFov(false);
     setArFovDeg(CAM_FOV_DEFAULT);
     setArCompositeUrl(null);
     setArStep("upload");
@@ -1168,7 +1320,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     exitCameraMode(); // 一人称→地図モードへ（パンは一旦解除される）
     if (arLoc) {
       apiRef.current?.frameSelectView(arLoc.lon, arLoc.lat, camHeading); // 撮影地点中心の俯瞰へ
-      apiRef.current?.setMapPanLocked(true); // 場所は固定。回転・ズームのみ
+      apiRef.current?.setControlMode("orbit"); // 場所は固定。回転・ズームのみ
     }
     setArStep("select");
   };
@@ -1261,7 +1413,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     exitCameraMode();
     if (arLoc) {
       apiRef.current?.frameSelectView(arLoc.lon, arLoc.lat, camHeading);
-      apiRef.current?.setMapPanLocked(true);
+      apiRef.current?.setControlMode("orbit");
     }
     setArStep("select");
   };
@@ -1401,7 +1553,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             };
             const cur = order[arStep];
             const cls = idx < cur ? "done" : idx === cur ? "active" : "todo";
-            const label = { locate: "地点", params: "画角", align: "向き", select: "山選択", export: "出力" }[k];
+            const label = { locate: "地点", params: "向き画角", align: "微調整", select: "山選択", export: "出力" }[k];
             return (
               <span key={k} className={`ar-step is-${cls}`}>
                 <b>{idx + 1}</b>
@@ -1442,7 +1594,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         <>
           <div className="ar-locate-hint">
             <IconMountain size={15} />
-            <span>写真に写る山を3Dマップ上でタップして選びます（手前/奥が分かりやすい）</span>
+            <span>
+              写真に写る山をタップして選びます。ドラッグで回転、ホイール／ピンチでズーム（撮影地点は固定）
+            </span>
           </div>
           {photoUrl && (
             <img className="ar-select-thumb" src={photoUrl} alt="撮影写真" title="撮影した写真" />
@@ -1459,30 +1613,38 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </>
       )}
 
-      {/* ③ 撮影情報フェーズ: 横画角の入力 */}
+      {/* ③ 向き・画角フェーズ: 地図上の視野コーンで方向と画角を決める */}
       {appMode === "ar" && arStep === "params" && (
-        <div className="ar-params">
-          <h2>撮影情報</h2>
-          <p>写真に写っている範囲（横画角）を合わせます。だいたいでOK、あとで微調整できます。</p>
-          <label className="ar-fov">
-            <span>横画角 {Math.round(arFovDeg)}°（広い ←→ 望遠）</span>
-            <input
-              type="range"
-              min={CAM_FOV_MIN}
-              max={CAM_FOV_MAX}
-              value={Math.round(arFovDeg)}
-              onChange={(e) => setArFovDeg(Number(e.target.value))}
-            />
-          </label>
-          <div className="ar-bottom-bar ar-bottom-bar--inline">
-            <button className="ar-btn-sub" onClick={restartAr}>
-              やり直す
-            </button>
-            <button className="ar-btn-main" onClick={confirmArParams}>
-              写真に合わせる
-            </button>
+        <>
+          <div className="ar-locate-hint">
+            <IconPin size={15} />
+            <span>地図をドラッグして撮影方向を指します。スライダーで画角（写る範囲）を調整。</span>
           </div>
-        </div>
+          <div className="ar-aim-bar">
+            <div className="ar-readout">
+              <span>方向 {compass(arHeadingDeg ?? 0)} {Math.round(arHeadingDeg ?? 0)}°</span>
+              <span>横画角 {Math.round(arFovDeg)}°</span>
+            </div>
+            <label className="ar-fov">
+              <span>画角（広い ←→ 望遠）</span>
+              <input
+                type="range"
+                min={CAM_FOV_MIN}
+                max={CAM_FOV_MAX}
+                value={Math.round(arFovDeg)}
+                onChange={(e) => setArFovDeg(Number(e.target.value))}
+              />
+            </label>
+            <div className="ar-aim-actions">
+              <button className="ar-btn-sub" onClick={restartAr}>
+                やり直す
+              </button>
+              <button className="ar-btn-main" onClick={confirmArParams}>
+                写真に合わせる
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ⑥ 書き出しフェーズ: 合成画像のプレビューとダウンロード */}
@@ -1614,7 +1776,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           {appMode === "ar" && arStep === "align" && (
             <div className="ar-phase-foot">
               <span className="cam-hint">
-                ドラッグで向き（上下左右）、ピンチ/ホイールで画角を写真に合わせます。あとで微調整できます。
+                写真にぴったり合うよう微調整。ドラッグで向き（上下左右）、ピンチ/ホイールで画角。
               </span>
               <button className="ar-btn-main ar-btn-wide" onClick={goSelect}>
                 次へ：山を選ぶ
