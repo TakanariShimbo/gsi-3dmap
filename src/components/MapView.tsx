@@ -1375,6 +1375,11 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     const file = e.target.files?.[0];
     e.target.value = ""; // 同じファイルを連続で選べるようリセット
     if (!file) return;
+    // ファイル選択（拡張子指定）から画像以外を選んだ場合は弾く。
+    if (file.type && !file.type.startsWith("image/")) {
+      alert("画像ファイルを選んでください（JPEG / PNG など）。");
+      return;
+    }
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(URL.createObjectURL(file));
     const exif = await readPhotoExif(file);
@@ -1660,7 +1665,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       )}
 
       {/* 写真取り込み input（モード非依存で1つだけ。地図/カメラ両方の入口から呼ぶ） */}
-      <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
+      {/* accept は image/* ではなく拡張子指定。Android で「ファイル選択」が開き EXIF(GPS) が
+          保たれる（image/* だとフォトピッカーが開き位置情報が削られることがある）。 */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,.heic,.heif"
+        hidden
+        onChange={onPickPhoto}
+      />
 
       {/* ① 写真選択フェーズ */}
       {appMode === "ar" && arStep === "upload" && (
