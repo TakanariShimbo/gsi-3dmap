@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
 import { CelestialLayer } from "../terrain/CelestialLayer";
+import { SkyDome } from "../terrain/SkyDome";
 import { computeSky, computeTrack, type SkyState, type SkyBody } from "../lib/celestial";
 import {
   IconMountain,
@@ -229,6 +230,11 @@ export default function MapView() {
     const celestialCenter = new THREE.Vector3();
     let lastObsWorld: THREE.Vector2 | null = null; // 直近に sky を計算した中心(world XZ)
 
+    // 太陽位置に連動する空グラデーション（カメラ視点の背景）。
+    const skyDome = new SkyDome();
+    scene.add(skyDome.mesh);
+    const sunDirWorld = new THREE.Vector3(0, 1, 0); // 直近の太陽方向（setCelestialSky で更新）
+
     // 視点フリーモード: ON の間は地形LOD・円盤・太陽月を凍結し、カメラだけ動かせる。
     // OFF にしたら、ON にした瞬間の視点へ戻す。
     let freeLookActive = false;
@@ -309,7 +315,10 @@ export default function MapView() {
           lastObsWorld = null;
         }
       },
-      setCelestialSky: (sky, sunTrack, moonTrack) => celestial.setSky(sky, sunTrack, moonTrack),
+      setCelestialSky: (sky, sunTrack, moonTrack) => {
+        celestial.setSky(sky, sunTrack, moonTrack);
+        if (sky) dirAzAlt(sky.sun.azimuthDeg, sky.sun.altitudeDeg, sunDirWorld);
+      },
       setFreeLook: (on) => {
         if (on) {
           savedPose = { pos: camera.position.clone(), target: controls.target.clone() };
@@ -492,12 +501,19 @@ export default function MapView() {
           celestialCenter.set(cam.eyeX, eyeY, cam.eyeZ);
           celestial.place(celestialCenter, CAM_CELESTIAL_R);
         }
+        // 空グラデーション（太陽位置に連動）。カメラ視点＋太陽月ON のとき。
+        skyDome.setVisible(celestialActive);
+        if (celestialActive) {
+          skyDome.setSunDir(sunDirWorld);
+          skyDome.place(camera.position);
+        }
         terrain.update(camera, mount.clientHeight, 30);
         renderer.render(scene, camera);
         raf = requestAnimationFrame(loop);
         return;
       }
 
+      skyDome.setVisible(false); // 地図モードは暗背景のまま
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
@@ -564,6 +580,7 @@ export default function MapView() {
       previewRing.geometry.dispose();
       (previewRing.material as THREE.Material).dispose();
       celestial.dispose();
+      skyDome.dispose();
       controls.dispose();
       terrain.dispose();
       renderer.dispose();
