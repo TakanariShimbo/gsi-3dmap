@@ -436,13 +436,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       const base = sampleSurfaceY(ex, ez) + 3; // 地表より少し上に浮かせて見やすく
       const half = (Math.min(Math.max(fovDeg, 1), 175) / 2) * (Math.PI / 180);
       const h0 = (headingDeg * Math.PI) / 180;
+      // コーンの長さは今のズーム（カメラ距離）に比例＝俯瞰の画面内にだいたい収まる。
+      const R = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * 0.55, 12, VIEWCONE_R);
       viewConePos[0] = ex;
       viewConePos[1] = base;
       viewConePos[2] = ez;
       for (let i = 0; i <= VIEWCONE_SEGS; i++) {
         const a = h0 - half + (2 * half * i) / VIEWCONE_SEGS; // 方位角（0=北=-Z）
-        const x = ex + VIEWCONE_R * Math.sin(a);
-        const z = ez - VIEWCONE_R * Math.cos(a);
+        const x = ex + R * Math.sin(a);
+        const z = ez - R * Math.cos(a);
         const o = (i + 1) * 3;
         viewConePos[o] = x;
         viewConePos[o + 1] = base;
@@ -627,16 +629,19 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         flyGoal = null; // 進行中の fly を止める
         controls.update();
       },
-      // 撮影地点を中心に、南上空から北を見下ろす俯瞰（北が上＝向きが読みやすい）。
+      // 撮影地点の「ほぼ真上」へ（少し南に倒して北を上に）。今のズーム距離は保ったまま
+      // flyGoal でフライトのように滑らかに移動。真上にすると向き（コンパス）が読みやすい。
       frameAimView: (lon, lat) => {
         const ex = mercXToWorld(lonToMercX(lon));
         const ez = mercYToWorld(latToMercY(lat));
         const h = sampleSurfaceY(ex, ez);
-        controls.target.set(ex, h, ez);
-        camera.position.set(ex, h + 150, ez + 110); // 南(+Z)・上空から北(-Z)を見下ろす
+        const dist = camera.position.distanceTo(controls.target); // 現在のズームを維持
+        const polar = THREE.MathUtils.degToRad(8); // 真上から8°だけ南へ（北上＆真上の特異点回避）
         camera.up.set(0, 1, 0);
-        flyGoal = null;
-        controls.update();
+        flyGoal = {
+          pos: new THREE.Vector3(ex, h + dist * Math.cos(polar), ez + dist * Math.sin(polar)),
+          target: new THREE.Vector3(ex, h, ez),
+        };
       },
       // 地図操作モード: map=通常 / aim=向き決め(ドラッグで方向、回転パン無効) / orbit=山選択(回転のみ)。
       setControlMode: (mode) => {
