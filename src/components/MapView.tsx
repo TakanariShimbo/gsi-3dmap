@@ -1717,7 +1717,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               <span>横画角 {Math.round(arFovDeg)}°</span>
             </div>
             <label className="ar-fov">
-              <span>画角（広い ←→ 望遠）</span>
+              <span>画角（望遠 ←→ 広角）</span>
               <input
                 type="range"
                 min={CAM_FOV_MIN}
@@ -1834,7 +1834,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           </label>
           {/* 横画角スライダー（1度単位で微調整。スクロール/ピンチと同じ値。シミュ・AR共通） */}
           <label className="cam-eye">
-            <span>横画角 {Math.round(camFov)}°（広い ←→ 望遠）</span>
+            <span>横画角 {Math.round(camFov)}°（望遠 ←→ 広角）</span>
             <input
               type="range"
               min={CAM_FOV_MIN}
