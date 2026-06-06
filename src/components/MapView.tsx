@@ -114,6 +114,16 @@ type MapViewProps = {
 // ARウィザードのフェーズ。
 type ArStep = "upload" | "locate" | "params" | "align" | "select" | "export";
 
+// 出力(仕上げ)で編集する山ラベル。dot=点、label=名札。座標は写真フレーム内の正規化値(0..1)。
+type ArLabel = {
+  name: string;
+  elevM: number;
+  dotU: number;
+  dotV: number;
+  labelU: number;
+  labelV: number;
+};
+
 export default function MapView({ appMode, onHome }: MapViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
@@ -194,7 +204,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const [arLoc, setArLoc] = useState<{ lat: number; lon: number } | null>(null); // 撮影地点
   const [arHeadingDeg, setArHeadingDeg] = useState<number | null>(null); // 撮影方位（EXIF or ②で設定）
   const [arFovDeg, setArFovDeg] = useState(CAM_FOV_DEFAULT); // 横画角（EXIF or ②で設定）
-  const [arCompositeUrl, setArCompositeUrl] = useState<string | null>(null); // 書き出した合成画像
+  const [arPhotoAspect, setArPhotoAspect] = useState<number | null>(null); // 仕上げ画面の枠アスペクト用
+  // 出力(仕上げ)で編集する各山ラベル。座標は写真フレーム内の正規化値(0..1)。
+  const [arLabels, setArLabels] = useState<ArLabel[]>([]);
   const arStepRef = useRef<ArStep>("upload"); // ループから参照
   const arPinXZRef = useRef<{ x: number; z: number } | null>(null); // 撮影地点ピンのワールドXZ
   const arPinElRef = useRef<HTMLDivElement | null>(null); // 撮影地点ピンのDOM
@@ -202,6 +214,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const arPhotoElRef = useRef<HTMLImageElement | null>(null); // 写真オーバーレイのDOM（枠に追従）
   const arHudRef = useRef<HTMLDivElement | null>(null); // カメラHUD（下部パネル）。枠の予約高さ算出に使う
   const appModeRef = useRef(appMode); // ループから appMode を参照（マウント中は不変）
+  const arEditStageRef = useRef<HTMLDivElement | null>(null); // 仕上げ画面の写真枠（座標換算用）
+  const arDragRef = useRef<{ i: number; kind: "dot" | "label" } | null>(null); // ドラッグ中の対象
   // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
   const [openSec, setOpenSec] = useState<Record<string, boolean>>({
     search: true,
@@ -1160,7 +1174,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     }
     const img = new Image();
     img.onload = () => {
-      arPhotoAspectRef.current = img.naturalWidth / Math.max(1, img.naturalHeight);
+      const a = img.naturalWidth / Math.max(1, img.naturalHeight);
+      arPhotoAspectRef.current = a;
+      setArPhotoAspect(a);
     };
     img.src = photoUrl;
   }, [photoUrl]);
@@ -1408,7 +1424,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     arPinXZRef.current = null;
     setArHeadingDeg(null);
     setArFovDeg(CAM_FOV_DEFAULT);
-    setArCompositeUrl(null);
+    setArLabels([]);
     setArStep("upload");
   };
   // 向き・画角(②)→ 山選択(③)。撮影地点中心の俯瞰で、写る方向の山を奥行きつきで選ぶ。
@@ -1432,10 +1448,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     apiRef.current?.setControlMode("orbit");
     setArStep("select");
   };
-  // 選択した山頂を写真の上に「山名＋標高」で焼き込み、合成画像(JPEG)を作る。
-  const generateComposite = async () => {
-    if (!photoUrl) return;
-    const sel = apiRef.current?.getPeakSelection() ?? []; // 写真フレーム内の正規化座標(u,v)
+  // 仕上げ(⑤)で編集した位置（arLabels）を写真に焼き込み、合成JPEGのデータURLを返す。
+  const bakeComposite = async (): Promise<string | null> => {
+    if (!photoUrl) return null;
     const img = new Image();
     img.src = photoUrl;
     await img.decode();
@@ -1445,65 +1460,96 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return null;
     ctx.drawImage(img, 0, 0, W, H);
     const fs = Math.max(13, Math.round(H * 0.024)); // 写真サイズに応じた文字サイズ
     ctx.font = `600 ${fs}px system-ui, -apple-system, sans-serif`;
     ctx.textBaseline = "alphabetic";
-    for (const p of sel) {
-      // 正規化座標は写真アスペクトの投影なので、そのまま写真ピクセルへ。
-      if (p.u < 0 || p.u > 1 || p.v < 0 || p.v > 1) continue; // 写真の枠外はスキップ
-      const px = p.u * W;
-      const py = p.v * H;
-      const text = `${p.name} ${Math.round(p.elevM)}m`;
+    for (const lb of arLabels) {
+      const dotX = lb.dotU * W;
+      const dotY = lb.dotV * H;
+      const text = `${lb.name} ${Math.round(lb.elevM)}m`;
       const tw = ctx.measureText(text).width;
       const padX = fs * 0.5;
       const padY = fs * 0.32;
       const chipH = fs + padY * 2;
       const chipW = tw + padX * 2;
-      const cx = Math.min(Math.max(px, chipW / 2 + 2), W - chipW / 2 - 2); // 枠内に収める
-      const top = py - fs * 1.2 - chipH; // 点の少し上
-      // 点
-      ctx.fillStyle = "#ff8a3c";
-      ctx.beginPath();
-      ctx.arc(px, py, Math.max(3, fs * 0.16), 0, Math.PI * 2);
-      ctx.fill();
-      // 引き出し線
+      const cx = lb.labelU * W; // 名札の中心
+      const cy = lb.labelV * H;
+      // 引き出し線（名札の中心→点）
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.lineWidth = Math.max(1, fs * 0.06);
       ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(cx, top + chipH);
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(dotX, dotY);
       ctx.stroke();
-      // チップ
+      // 点
+      ctx.fillStyle = "#ff8a3c";
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, Math.max(3, fs * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+      // チップ（名札。中心 = cx,cy）
       ctx.fillStyle = "rgba(40, 92, 152, 0.92)";
       ctx.beginPath();
-      ctx.roundRect(cx - chipW / 2, top, chipW, chipH, 6);
+      ctx.roundRect(cx - chipW / 2, cy - chipH / 2, chipW, chipH, 6);
       ctx.fill();
       // 文字
       ctx.fillStyle = "#fff";
       ctx.textAlign = "center";
-      ctx.fillText(text, cx, top + padY + fs * 0.82);
+      ctx.fillText(text, cx, cy + fs * 0.34);
     }
-    setArCompositeUrl(canvas.toDataURL("image/jpeg", 0.92));
+    return canvas.toDataURL("image/jpeg", 0.92);
   };
-  // 微調整(④)→ 書き出し(⑤)。今の一人称ポーズのまま投影・合成（復帰不要）。
+  // 微調整(④)→ 仕上げ(⑤)。選択山を写真フレーム内の正規化座標で取り、編集用に展開。
   const goExport = () => {
+    const sel = apiRef.current?.getPeakSelection() ?? [];
+    const labels: ArLabel[] = sel
+      .filter((p) => p.u >= 0 && p.u <= 1 && p.v >= 0 && p.v <= 1) // 写真枠内のみ
+      .map((p) => ({
+        name: p.name,
+        elevM: p.elevM,
+        dotU: p.u,
+        dotV: p.v,
+        labelU: p.u,
+        labelV: Math.max(0.06, p.v - 0.12), // 名札は点の少し上を初期位置に
+      }));
+    setArLabels(labels);
     setArStep("export");
-    void generateComposite();
   };
-  // 書き出し(⑤)→ 微調整(④)へ戻る。一人称のまま合成パネルを閉じる。
+  // 仕上げ(⑤)→ 微調整(④)へ戻る。
   const backToAlignFromExport = () => {
-    setArCompositeUrl(null);
     setArStep("align");
   };
-  // 書き出した合成画像をダウンロード。
-  const downloadComposite = () => {
-    if (!arCompositeUrl) return;
+  // 編集後の位置で焼き込み、合成画像をダウンロード。
+  const downloadComposite = async () => {
+    const url = await bakeComposite();
+    if (!url) return;
     const a = document.createElement("a");
-    a.href = arCompositeUrl;
+    a.href = url;
     a.download = "gsi-ar.jpg";
     a.click();
+  };
+  // 仕上げ画面: 名札/点のドラッグ。座標は写真枠内の正規化値(0..1)で持つ。
+  const onEditDown = (i: number, kind: "dot" | "label") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    arDragRef.current = { i, kind };
+  };
+  const onEditMove = (e: React.PointerEvent) => {
+    const d = arDragRef.current;
+    const stage = arEditStageRef.current;
+    if (!d || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    setArLabels((prev) =>
+      prev.map((lb, idx) =>
+        idx !== d.i ? lb : d.kind === "dot" ? { ...lb, dotU: u, dotV: v } : { ...lb, labelU: u, labelV: v },
+      ),
+    );
+  };
+  const onEditUp = () => {
+    arDragRef.current = null;
   };
   // 現在のモードの標高誇張を変更（モードごとに記憶）。
   const activeVex = mode === "camera" ? camVex : mapVex;
@@ -1738,20 +1784,70 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </>
       )}
 
-      {/* ⑥ 書き出しフェーズ: 合成画像のプレビューとダウンロード */}
+      {/* ⑤ 出力(仕上げ): 写真に名札・点を重ね、ドラッグで微調整してからダウンロード */}
       {appMode === "ar" && arStep === "export" && (
-        <div className="ar-export">
-          <h2>合成画像</h2>
-          {arCompositeUrl ? (
-            <img className="ar-export-preview" src={arCompositeUrl} alt="合成画像プレビュー" />
-          ) : (
-            <p className="ar-export-loading">生成中…</p>
-          )}
-          <div className="ar-export-actions">
+        <div className="ar-edit">
+          <div
+            className="ar-edit-stage"
+            ref={arEditStageRef}
+            style={
+              {
+                aspectRatio: String(arPhotoAspect ?? 1.5),
+                "--ar": String(arPhotoAspect ?? 1.5),
+              } as React.CSSProperties
+            }
+          >
+            {photoUrl && <img className="ar-edit-photo" src={photoUrl} alt="" draggable={false} />}
+            {/* 引き出し線（名札→点） */}
+            <svg className="ar-edit-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {arLabels.map((lb, i) => (
+                <line
+                  key={i}
+                  x1={lb.labelU * 100}
+                  y1={lb.labelV * 100}
+                  x2={lb.dotU * 100}
+                  y2={lb.dotV * 100}
+                  stroke="rgba(255,255,255,0.85)"
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+            {arLabels.map((lb, i) => (
+              <div key={i}>
+                <div
+                  className="ar-edit-dot"
+                  style={{ left: `${lb.dotU * 100}%`, top: `${lb.dotV * 100}%` }}
+                  onPointerDown={onEditDown(i, "dot")}
+                  onPointerMove={onEditMove}
+                  onPointerUp={onEditUp}
+                />
+                <div
+                  className="ar-edit-label"
+                  style={{ left: `${lb.labelU * 100}%`, top: `${lb.labelV * 100}%` }}
+                  onPointerDown={onEditDown(i, "label")}
+                  onPointerMove={onEditMove}
+                  onPointerUp={onEditUp}
+                >
+                  {lb.name} {Math.round(lb.elevM)}m
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="ar-edit-bar">
             <button className="ar-btn-sub" onClick={backToAlignFromExport}>
-              ← 微調整へ
+              ← 微調整
             </button>
-            <button className="ar-btn-main" disabled={!arCompositeUrl} onClick={downloadComposite}>
+            <span className="ar-edit-hint">
+              {arLabels.length > 0
+                ? `名札や点をドラッグで微調整（${arLabels.length}個）`
+                : "写真の枠内に山がありません。微調整で向きを合わせ直してください"}
+            </span>
+            <button
+              className="ar-btn-main"
+              disabled={arLabels.length === 0}
+              onClick={downloadComposite}
+            >
               ダウンロード
             </button>
           </div>

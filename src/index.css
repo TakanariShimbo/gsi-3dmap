@@ -1312,48 +1312,90 @@ body,
   width: 100%;
 }
 
-/* ⑥ 書き出しフェーズ（中央パネル） */
-.ar-export {
+/* ⑤ 出力(仕上げ): 写真の上で名札・点をドラッグ編集する全画面 */
+.ar-edit {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 100px);
+  inset: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 18px;
-  color: #e6edf5;
-  background: rgba(14, 19, 27, 0.95);
-  border: 1px solid rgba(130, 150, 175, 0.3);
-  border-radius: 16px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding: 52px 12px 12px; /* 上は進行表示の分を空ける */
+  background: #06080c;
   z-index: 22;
 }
-.ar-export h2 {
-  margin: 0;
-  font-size: 17px;
-  text-align: center;
-}
-.ar-export-preview {
-  width: 100%;
-  max-height: 60vh;
-  object-fit: contain;
-  border-radius: 8px;
+.ar-edit-stage {
+  position: relative;
+  /* --ar(写真のW/H)とaspect-ratioはinlineで指定。高さは縦・横どちらの制約でも収まる値に。 */
+  height: min(calc(100vh - 52px - 84px), calc((100vw - 24px) / var(--ar, 1.5)));
   background: #000;
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
 }
-.ar-export-loading {
-  margin: 0;
-  padding: 40px 0;
-  text-align: center;
-  color: #aebccf;
+.ar-edit-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
 }
-.ar-export-actions {
+.ar-edit-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.ar-edit-dot {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ff8a3c;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  cursor: grab;
+  touch-action: none;
+}
+.ar-edit-dot:active {
+  cursor: grabbing;
+}
+.ar-edit-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 4px 9px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(40, 92, 152, 0.94);
+  border: 1px solid rgba(120, 180, 240, 0.7);
+  border-radius: 7px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ar-edit-label:active {
+  cursor: grabbing;
+}
+.ar-edit-bar {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 24px));
   justify-content: space-between;
+}
+.ar-edit-hint {
+  font-size: 12px;
+  color: #aebccf;
+  text-align: center;
+  flex: 1;
 }
 
 /* 山選択フェーズ: 参照用の撮影写真サムネ（右上） */
