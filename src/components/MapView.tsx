@@ -126,6 +126,9 @@ export default function MapView() {
   const [showRemote, setShowRemote] = useState(true);
   // 中心マーカー（視点中心＝画面中央の目印）。画面中央のレティクルで表示する。
   const [showCenter, setShowCenter] = useState(true);
+  // 空グラデーション表示。
+  const [showSky, setShowSky] = useState(true);
+  const showSkyRef = useRef(true);
   // 視点フリーモード（解像度・太陽月・円盤を凍結して視点だけ動かす）。
   const [freeLook, setFreeLook] = useState(false);
   // 標高の誇張（×1=実寸 1:1:1）。モードごとに既定が異なる（地図1.7 / カメラ1.0）。
@@ -503,9 +506,9 @@ export default function MapView() {
           celestialCenter.set(cam.eyeX, eyeY, cam.eyeZ);
           celestial.place(celestialCenter, CAM_CELESTIAL_R);
         }
-        // 空グラデーション（太陽位置に連動）。カメラ視点では常時表示。
+        // 空グラデーション（太陽位置に連動）。表示トグルで切替。
         // 太陽方向は 太陽月ON=選択時刻 / OFF=現在時刻（下の effect が sunDirWorld を更新）。
-        skyDome.setVisible(true);
+        skyDome.setVisible(showSkyRef.current);
         skyDome.setSunDir(sunDirWorld);
         skyDome.place(camera.position);
         terrain.update(camera, mount.clientHeight, 30);
@@ -517,8 +520,8 @@ export default function MapView() {
       applyNav();
       controls.update();
       const camDist = camera.position.distanceTo(controls.target);
-      // 空グラデーション（地図モードでも傾ければ見える。常時表示）。
-      skyDome.setVisible(true);
+      // 空グラデーション（地図モードでも傾ければ見える。表示トグルで切替）。
+      skyDome.setVisible(showSkyRef.current);
       skyDome.setSunDir(sunDirWorld);
       skyDome.place(camera.position);
       // 視点フリー中は、地形LOD・円盤・太陽月の連動を凍結（カメラだけ動かす）。
@@ -608,6 +611,11 @@ export default function MapView() {
   useEffect(() => {
     apiRef.current?.setBasemap(basemapById(basemapId));
   }, [basemapId]);
+
+  // 空グラデーション表示の切替（ループから参照する ref に同期）。
+  useEffect(() => {
+    showSkyRef.current = showSky;
+  }, [showSky]);
 
   // 初回起動: 現在地が取れればそこへ移動し、ホームの基準にする。取れなければ日本全体ビューのまま。
   useEffect(() => {
@@ -1000,6 +1008,14 @@ export default function MapView() {
               onChange={(e) => setShowCenter(e.target.checked)}
             />
             <span>中心マーカーを表示</span>
+          </label>
+          <label className="side-toggle">
+            <input
+              type="checkbox"
+              checked={showSky}
+              onChange={(e) => setShowSky(e.target.checked)}
+            />
+            <span>空のグラデーションを表示</span>
           </label>
           <label className="save-field">
             <span>
