@@ -251,6 +251,65 @@ body,
   background: rgba(60, 70, 86, 0.8);
 }
 
+/* GPSなし写真の手動位置指定ガイド（上中央） */
+.photo-locate-hint {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f1e9d2;
+  background: rgba(70, 56, 20, 0.92);
+  border: 1px solid rgba(200, 170, 90, 0.5);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.photo-locate-hint > svg {
+  flex: 0 0 auto;
+}
+.photo-locate-hint button {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+  color: #f1e9d2;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(200, 170, 90, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* ホームへ戻る（左上・メニューの右） */
+.home-btn {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: calc(max(8px, env(safe-area-inset-left, 8px)) + 50px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  color: #e6edf5;
+  background: rgba(18, 24, 33, 0.78);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 10px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.home-btn:hover {
+  background: rgba(28, 36, 48, 0.88);
+}
+
 /* --- メニュー開閉ボタン（左上） --- */
 .menu-toggle {
   position: absolute;
@@ -953,4 +1012,148 @@ body,
 .nav-ico--tilt-up {
   transform: rotate(-135deg);
   margin-bottom: -3px;
+}
+
+/* --- ホーム画面（入場時のランディング） --- */
+.home {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(60, 90, 140, 0.35), transparent 70%),
+    linear-gradient(180deg, #0c1118 0%, #0a0d12 100%);
+  color: #e6edf5;
+  overflow: auto;
+}
+.home-inner {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.home-head {
+  text-align: center;
+}
+.home-head h1 {
+  margin: 0;
+  font-size: clamp(28px, 6vw, 40px);
+  letter-spacing: 0.04em;
+}
+.home-head p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #9fb0c4;
+}
+.home-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: #e6edf5;
+  background: rgba(20, 27, 38, 0.8);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 16px;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.home-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(120, 180, 240, 0.6);
+  background: rgba(28, 38, 54, 0.9);
+}
+.home-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  color: #bcd6f5;
+  background: rgba(79, 134, 198, 0.2);
+}
+.home-card-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.home-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9fb0c4;
+}
+
+/* --- ARの入口（写真未選択時の案内） --- */
+.ar-intro {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 24px;
+  text-align: center;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.92);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 18;
+}
+.ar-intro-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  color: #bcd6f5;
+  background: rgba(79, 134, 198, 0.2);
+}
+.ar-intro h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.ar-intro p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #aebccf;
+}
+.ar-intro-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(79, 134, 198, 0.9);
+  border: 1px solid rgba(120, 180, 240, 0.6);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ar-intro-pick:hover {
+  background: rgba(94, 150, 214, 0.95);
 }

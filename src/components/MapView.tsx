@@ -32,6 +32,7 @@ import {
   elevToWorldY,
   setVerticalExaggeration as applyVEX,
 } from "../lib/mercator";
+import { readPhotoExif } from "../lib/exif";
 import {
   BASEMAPS,
   basemapById,
@@ -105,7 +106,12 @@ function dirAzAlt(azDeg: number, altDeg: number, out: THREE.Vector3): THREE.Vect
   return out.set(Math.cos(e) * Math.sin(a), Math.sin(e), -Math.cos(e) * Math.cos(a));
 }
 
-export default function MapView() {
+type MapViewProps = {
+  appMode: "simulation" | "ar"; // シミュレーション / AR（写真から）。ホーム画面から指定される。
+  onHome: () => void; // ホーム画面へ戻る。
+};
+
+export default function MapView({ appMode, onHome }: MapViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
   const navRef = useRef<Nav>({ panX: 0, panZ: 0, orbit: 0, tilt: 0, dolly: 0, home: false });
@@ -118,7 +124,10 @@ export default function MapView() {
     setCelestialActive: (on: boolean) => void;
     setCelestialSky: (sky: SkyState | null, sunTrack: SkyBody[], moonTrack: SkyBody[]) => void;
     setFreeLook: (on: boolean) => void;
-    enterCamera: (eyeHeightM: number) => { heading: number; pitch: number; fov: number };
+    enterCamera: (
+      eyeHeightM: number,
+      override?: { lon: number; lat: number; headingDeg?: number; fovDeg?: number },
+    ) => { heading: number; pitch: number; fov: number };
     exitCamera: () => void;
     setCamLook: (heading: number, pitch: number) => void;
     setCamFov: (fov: number) => void;
@@ -170,6 +179,8 @@ export default function MapView() {
   // 写真オーバーレイ（カメラ視点に撮影画像を重ね、手動で位置合わせ）。M1=重ね描画のみ。
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoOpacity, setPhotoOpacity] = useState(0.5);
+  // 取り込んだ写真にGPSが無く、地図で撮影地点を手動指定してほしい状態。
+  const [photoGpsMissing, setPhotoGpsMissing] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
   const [openSec, setOpenSec] = useState<Record<string, boolean>>({
@@ -426,17 +437,33 @@ export default function MapView() {
           }
         }
       },
-      enterCamera: (eyeHeightM) => {
-        mapPose = { pos: camera.position.clone(), target: controls.target.clone() };
-        cam.eyeX = controls.target.x;
-        cam.eyeZ = controls.target.z;
+      enterCamera: (eyeHeightM, override) => {
+        // override あり（写真のGPS）＝その地点へ即着地。なし＝今の地図中心に立つ。
+        if (override) {
+          cam.eyeX = mercXToWorld(lonToMercX(override.lon));
+          cam.eyeZ = mercYToWorld(latToMercY(override.lat));
+          // 地図へ戻った時にGPS地点を見渡せるよう、復帰ポーズもその地点に向ける。
+          const gps = new THREE.Vector3(cam.eyeX, 0, cam.eyeZ);
+          mapPose = { pos: gps.clone().add(new THREE.Vector3(0, 2200, 2600)), target: gps };
+        } else {
+          mapPose = { pos: camera.position.clone(), target: controls.target.clone() };
+          cam.eyeX = controls.target.x;
+          cam.eyeZ = controls.target.z;
+        }
         // 地表のワールドYを実標高(m)に戻して保持（VEX変更にも追従できる）。
         cam.groundElevM = sampleSurfaceY(cam.eyeX, cam.eyeZ) / Math.max(1e-9, elevToWorldY(1));
         cam.eyeHeightM = eyeHeightM;
-        camera.getWorldDirection(dirTmp); // 初期方位＝今の水平向き
-        cam.heading = ((Math.atan2(dirTmp.x, -dirTmp.z) * 180) / Math.PI + 360) % 360;
+        if (override?.headingDeg != null) {
+          cam.heading = ((override.headingDeg % 360) + 360) % 360; // EXIF撮影方位
+        } else {
+          camera.getWorldDirection(dirTmp); // 初期方位＝今の水平向き
+          cam.heading = ((Math.atan2(dirTmp.x, -dirTmp.z) * 180) / Math.PI + 360) % 360;
+        }
         cam.pitch = 0;
-        cam.fov = CAM_FOV_DEFAULT;
+        cam.fov =
+          override?.fovDeg != null
+            ? THREE.MathUtils.clamp(override.fovDeg, CAM_FOV_MIN, CAM_FOV_MAX) // EXIF焦点距離由来
+            : CAM_FOV_DEFAULT;
         terrain.setClip(null, 0); // 円盤クリップ解除（カメラ視点は切り抜かない）
         peaks.setCameraMode(true); // カメラ視点では選択(青)の山頂だけ残し、未選択(橙)は隠す
         cameraMode = true;
@@ -942,12 +969,14 @@ export default function MapView() {
   };
 
   // カメラ視点モードへ（太陽月は維持。自由視点はマップ専用なのでオフにしてから入る）。
-  const enterCameraMode = () => {
+  const enterCameraMode = (
+    override?: { lon: number; lat: number; headingDeg?: number; fovDeg?: number },
+  ) => {
     if (freeLook) {
       setFreeLook(false);
       apiRef.current?.setFreeLook(false);
     }
-    const init = apiRef.current?.enterCamera(camEyeHeight); // 地表高さは現在(地図VEX)で取得
+    const init = apiRef.current?.enterCamera(camEyeHeight, override); // 地表高さは現在(地図VEX)で取得
     if (init) {
       setCamHeading(init.heading);
       setCamPitch(init.pitch);
@@ -955,23 +984,39 @@ export default function MapView() {
     }
     apiRef.current?.setVerticalExaggeration(camVex); // カメラ用VEXへ（地形再生成）
     setMode("camera");
+    setPhotoGpsMissing(false); // 着地したら手動指定の案内は消す
   };
   const exitCameraMode = () => {
     apiRef.current?.exitCamera();
     apiRef.current?.setVerticalExaggeration(mapVex); // 地図用VEXへ戻す（地形再生成）
     setMode("map");
   };
-  // 写真オーバーレイ: 撮影画像を取り込んで blob URL にする（前の画像は破棄）。
-  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 写真起点フロー: 画像を取り込み→EXIF判定→GPSあれば自動着地／なければ地図で手動指定へ。
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ""; // 同じファイルを連続で選べるようリセット
     if (!file) return;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(URL.createObjectURL(file));
-    e.target.value = ""; // 同じファイルを連続で選べるようリセット
+    setPhotoGpsMissing(false);
+    const exif = await readPhotoExif(file);
+    if (exif.lat != null && exif.lon != null) {
+      // GPSあり → その地点へ立ち、方位・画角もEXIFがあれば初期化（無い項目は既定）。
+      enterCameraMode({
+        lon: exif.lon,
+        lat: exif.lat,
+        headingDeg: exif.headingDeg ?? undefined,
+        fovDeg: exif.hFovDeg ?? undefined,
+      });
+    } else {
+      // GPSなし → 地図に留め、撮影地点へ移動して「カメラ視点」に入ってもらう。
+      setPhotoGpsMissing(true);
+    }
   };
   const clearPhoto = () => {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(null);
+    setPhotoGpsMissing(false);
   };
   // 現在モードの標高誇張を変更（モードごとに記憶）。
   const activeVex = mode === "camera" ? camVex : mapVex;
@@ -1066,6 +1111,37 @@ export default function MapView() {
         <img className="photo-overlay" src={photoUrl} alt="" style={{ opacity: photoOpacity }} />
       )}
 
+      {/* 写真取り込み input（モード非依存で1つだけ。地図/カメラ両方の入口から呼ぶ） */}
+      <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
+
+      {/* ARの入口: まだ写真が無い間は写真選択を促す（ユーザー操作で input を開く） */}
+      {appMode === "ar" && !photoUrl && mode === "map" && (
+        <div className="ar-intro">
+          <span className="ar-intro-icon">
+            <IconImage size={34} />
+          </span>
+          <h2>AR：写真から</h2>
+          <p>
+            撮った写真を選ぶと、その撮影地点に立って3D地形と山名を重ねます。
+            <br />
+            位置情報（GPS）があれば自動で、無ければ地図で撮影地点を指定します。
+          </p>
+          <button className="ar-intro-pick" onClick={() => photoInputRef.current?.click()}>
+            <IconImage size={16} />
+            <span>写真を選ぶ</span>
+          </button>
+        </div>
+      )}
+
+      {/* GPSなし写真の手動位置指定ガイド（地図モード） */}
+      {mode === "map" && photoUrl && photoGpsMissing && (
+        <div className="photo-locate-hint">
+          <IconImage size={15} />
+          <span>この写真にGPSがありません。地図で撮影地点へ移動して「カメラ視点」に入ると重ねられます。</span>
+          <button onClick={clearPhoto} title="写真を外す">×</button>
+        </div>
+      )}
+
       {/* 中心レティクル（注視点＝画面中央の目印） */}
       {mode === "map" && showCenter && (
         <svg ref={reticleRef} className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
@@ -1088,15 +1164,21 @@ export default function MapView() {
         ☰
       </button>
 
+      {/* ホームへ戻る（左上・メニューの右） */}
+      <button className="home-btn" title="ホーム画面へ戻る" aria-label="ホーム" onClick={onHome}>
+        <IconHome size={18} />
+      </button>
+
       {/* 地図⇄カメラ視点の切替（右上） */}
       <button
         className={`mode-toggle${mode === "camera" ? " is-camera" : ""}`}
         title={mode === "map" ? "カメラ視点：今見ている地点に立って見回す" : "地図に戻る"}
-        onClick={mode === "map" ? enterCameraMode : exitCameraMode}
+        onClick={mode === "map" ? () => enterCameraMode() : exitCameraMode}
       >
         {mode === "map" ? <IconCamera size={16} /> : <IconMap size={16} />}
         <span>{mode === "map" ? "カメラ視点" : "地図に戻る"}</span>
       </button>
+
 
       {/* 山頂選択の一括解除チップ（選択が1つ以上ある時だけ表示） */}
       {showPeaks && peakSelCount > 0 && (
@@ -1132,38 +1214,33 @@ export default function MapView() {
               onChange={(e) => changeCamEyeHeight(Number(e.target.value))}
             />
           </label>
-          {/* 写真オーバーレイ: 未読込なら取り込みボタン、読込済みなら不透明度＋解除 */}
-          <div className="cam-photo">
-            {!photoUrl ? (
-              <button className="cam-photo-pick" onClick={() => photoInputRef.current?.click()}>
-                <IconImage size={15} />
-                <span>写真を重ねて合わせる</span>
-              </button>
-            ) : (
-              <div className="cam-photo-ctrl">
-                <label className="cam-photo-opacity">
-                  <span>写真の不透明度 {Math.round(photoOpacity * 100)}%</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(photoOpacity * 100)}
-                    onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)}
-                  />
-                </label>
-                <button className="cam-photo-clear" title="写真を外す" onClick={clearPhoto}>
-                  写真を外す
+          {/* 写真オーバーレイ操作（ARモードのみ）: 未読込なら取り込み、読込済みなら不透明度＋解除 */}
+          {appMode === "ar" && (
+            <div className="cam-photo">
+              {!photoUrl ? (
+                <button className="cam-photo-pick" onClick={() => photoInputRef.current?.click()}>
+                  <IconImage size={15} />
+                  <span>写真を重ねて合わせる</span>
                 </button>
-              </div>
-            )}
-          </div>
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={onPickPhoto}
-          />
+              ) : (
+                <div className="cam-photo-ctrl">
+                  <label className="cam-photo-opacity">
+                    <span>写真の不透明度 {Math.round(photoOpacity * 100)}%</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(photoOpacity * 100)}
+                      onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)}
+                    />
+                  </label>
+                  <button className="cam-photo-clear" title="写真を外す" onClick={clearPhoto}>
+                    写真を外す
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="cam-hint">ドラッグで見回す ／ ホイール・ピンチで画角</div>
         </div>
       )}
