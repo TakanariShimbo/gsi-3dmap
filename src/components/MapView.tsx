@@ -635,7 +635,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         const ex = mercXToWorld(lonToMercX(lon));
         const ez = mercYToWorld(latToMercY(lat));
         const h = sampleSurfaceY(ex, ez);
-        const dist = camera.position.distanceTo(controls.target); // 現在のズームを維持
+        // 現在のズームを維持しつつ、極端に引きすぎ/寄りすぎは適度に収める。
+        const dist = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target), 12, 160);
         const polar = THREE.MathUtils.degToRad(8); // 真上から8°だけ南へ（北上＆真上の特異点回避）
         camera.up.set(0, 1, 0);
         flyGoal = {
@@ -1306,6 +1307,23 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const confirmArParams = () => {
     if (arLoc) goAlign(arLoc, arHeadingDeg ?? 0, arFovDeg);
   };
+  // 向き・画角(②)→ 撮影地点(①)へ戻る（位置を選び直せる）。
+  const backToLocate = () => {
+    if (!arLoc) return;
+    apiRef.current?.setControlMode("map"); // パン可に戻す
+    apiRef.current?.flyTo({ lat: arLoc.lat, lon: arLoc.lon }); // 撮影地点へ寄せる
+    setArStep("locate");
+  };
+  // 合わせる(③)→ 向き・画角(②)へ戻る。一人称での調整を②へ反映してから戻す。
+  const backToParams = () => {
+    if (!arLoc) return;
+    setArHeadingDeg(camHeading); // 微調整した向き・画角を②に引き継ぐ
+    setArFovDeg(camFov);
+    exitCameraMode(); // 一人称→地図
+    apiRef.current?.frameAimView(arLoc.lon, arLoc.lat);
+    apiRef.current?.setControlMode("aim");
+    setArStep("params");
+  };
   // 最初からやり直す（写真を外して写真選択フェーズへ）。
   const restartAr = () => {
     if (mode === "camera") exitCameraMode();
@@ -1641,11 +1659,11 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               />
             </label>
             <div className="ar-aim-actions">
-              <button className="ar-btn-sub" onClick={restartAr}>
-                やり直す
+              <button className="ar-btn-sub" onClick={backToLocate}>
+                ← 撮影地点
               </button>
               <button className="ar-btn-main" onClick={confirmArParams}>
-                写真に合わせる
+                写真に合わせる →
               </button>
             </div>
           </div>
@@ -1740,7 +1758,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             <span>目線高さ {camEyeHeight} m</span>
             <input
               type="range"
-              min={1}
+              min={-10}
               max={200}
               value={camEyeHeight}
               onChange={(e) => changeCamEyeHeight(Number(e.target.value))}
@@ -1777,15 +1795,20 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           {appMode === "simulation" && (
             <div className="cam-hint">ドラッグで見回す ／ ホイール・ピンチで画角</div>
           )}
-          {/* AR ④向き合わせ: 説明＋山選択へ */}
+          {/* AR ③微調整: 説明＋戻る/山選択へ */}
           {appMode === "ar" && arStep === "align" && (
             <div className="ar-phase-foot">
               <span className="cam-hint">
                 写真にぴったり合うよう微調整。ドラッグで向き（上下左右）、ピンチ/ホイールで画角。
               </span>
-              <button className="ar-btn-main ar-btn-wide" onClick={goSelect}>
-                次へ：山を選ぶ
-              </button>
+              <div className="ar-phase-foot-row">
+                <button className="ar-btn-sub" onClick={backToParams}>
+                  ← 向き・画角
+                </button>
+                <button className="ar-btn-main" onClick={goSelect}>
+                  山を選ぶ →
+                </button>
+              </div>
             </div>
           )}
         </div>
