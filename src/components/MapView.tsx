@@ -111,6 +111,9 @@ type MapViewProps = {
   onHome: () => void; // ホーム画面へ戻る。
 };
 
+// ARウィザードのフェーズ。
+type ArStep = "upload" | "locate" | "params" | "align" | "select" | "export";
+
 export default function MapView({ appMode, onHome }: MapViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
@@ -137,6 +140,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     setPeaksVisible: (on: boolean) => void;
     setPeaksData: (data: Awaited<ReturnType<typeof loadAllMountains>>) => void;
     clearPeakSelection: () => void;
+    revealAllPeaks: (on: boolean) => void; // AR山選択フェーズ: 未選択の点も出して選べるように
+    getPeakSelection: () => { name: string; elevM: number; sx: number; sy: number }[]; // 書き出し用: 選択山の画面座標
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
   const homeLocRef = useRef<LonLat | null>(null);
@@ -180,13 +185,14 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoOpacity, setPhotoOpacity] = useState(0.5);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
-  // ARウィザードのフェーズ: 写真選択 → (位置がなければ)撮影地点選択 → (画角がなければ)情報入力 → 合わせる。
-  const [arStep, setArStep] = useState<"upload" | "locate" | "params" | "align">("upload");
+  // ARウィザードのフェーズ: 写真→撮影地点→撮影情報→向き合わせ→山選択→書き出し。
+  const [arStep, setArStep] = useState<ArStep>("upload");
   const [arLoc, setArLoc] = useState<{ lat: number; lon: number } | null>(null); // 撮影地点
   const [arHeadingDeg, setArHeadingDeg] = useState<number | null>(null); // EXIF撮影方位
   const [arHasExifFov, setArHasExifFov] = useState(false); // EXIFに画角があったか
   const [arFovDeg, setArFovDeg] = useState(CAM_FOV_DEFAULT); // 採用する横画角（EXIF or 手入力）
-  const arStepRef = useRef<"upload" | "locate" | "params" | "align">("upload"); // ループから参照
+  const [arCompositeUrl, setArCompositeUrl] = useState<string | null>(null); // 書き出した合成画像
+  const arStepRef = useRef<ArStep>("upload"); // ループから参照
   const arPinXZRef = useRef<{ x: number; z: number } | null>(null); // 撮影地点ピンのワールドXZ
   const arPinElRef = useRef<HTMLDivElement | null>(null); // 撮影地点ピンのDOM
   // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
@@ -523,6 +529,25 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       },
       clearPeakSelection: () => {
         peaks.clearSelection(); // ラベルの選択強調は次フレームの updatePeakLabels で反映
+      },
+      // AR山選択フェーズ: on で未選択(橙)の点も表示してタップで選べるように。off で選択のみ。
+      revealAllPeaks: (on) => peaks.setCameraMode(!on),
+      // 書き出し用: 選択中の山頂を画面座標つきで返す（カメラ後方は除外）。
+      getPeakSelection: () => {
+        const w = mount.clientWidth;
+        const h = mount.clientHeight;
+        const out: { name: string; elevM: number; sx: number; sy: number }[] = [];
+        for (const i of peaks.selected) {
+          projTmp.copy(peaks.worldPos(i)).project(camera);
+          if (projTmp.z > 1) continue; // カメラ後方は除外
+          out.push({
+            name: peaks.peakName(i),
+            elevM: peaks.peakElev(i),
+            sx: (projTmp.x * 0.5 + 0.5) * w,
+            sy: (-projTmp.y * 0.5 + 0.5) * h,
+          });
+        }
+        return out;
       },
     };
 
@@ -1110,9 +1135,98 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     setArHeadingDeg(null);
     setArHasExifFov(false);
     setArFovDeg(CAM_FOV_DEFAULT);
+    setArCompositeUrl(null);
     setArStep("upload");
   };
-  // 現在モードの標高誇張を変更（モードごとに記憶）。
+  // 合わせる→山選択へ（未選択の点も出してタップで選べるように）。
+  const goSelect = () => {
+    apiRef.current?.revealAllPeaks(true);
+    setArStep("select");
+  };
+  // 山選択→合わせるへ戻る（選択中の点だけに戻す）。
+  const backToAlign = () => {
+    apiRef.current?.revealAllPeaks(false);
+    setArStep("align");
+  };
+  // 選択した山頂を写真の上に「山名＋標高」で焼き込み、合成画像(JPEG)を作る。
+  const generateComposite = async () => {
+    const mount = mountRef.current;
+    if (!photoUrl || !mount) return;
+    const sel = apiRef.current?.getPeakSelection() ?? []; // 画面座標は今の投影で確定
+    const img = new Image();
+    img.src = photoUrl;
+    await img.decode();
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    // 表示は object-fit:contain。画面座標→写真ピクセル座標へ逆変換する係数を出す。
+    const scale = Math.min(mount.clientWidth / W, mount.clientHeight / H);
+    const offX = (mount.clientWidth - W * scale) / 2;
+    const offY = (mount.clientHeight - H * scale) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, W, H);
+    const fs = Math.max(13, Math.round(H * 0.024)); // 写真サイズに応じた文字サイズ
+    ctx.font = `600 ${fs}px system-ui, -apple-system, sans-serif`;
+    ctx.textBaseline = "alphabetic";
+    for (const p of sel) {
+      const px = (p.sx - offX) / scale;
+      const py = (p.sy - offY) / scale;
+      if (px < 0 || px > W || py < 0 || py > H) continue; // 写真の枠外はスキップ
+      const text = `${p.name} ${Math.round(p.elevM)}m`;
+      const tw = ctx.measureText(text).width;
+      const padX = fs * 0.5;
+      const padY = fs * 0.32;
+      const chipH = fs + padY * 2;
+      const chipW = tw + padX * 2;
+      const cx = Math.min(Math.max(px, chipW / 2 + 2), W - chipW / 2 - 2); // 枠内に収める
+      const top = py - fs * 1.2 - chipH; // 点の少し上
+      // 点
+      ctx.fillStyle = "#ff8a3c";
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(3, fs * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+      // 引き出し線
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = Math.max(1, fs * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(cx, top + chipH);
+      ctx.stroke();
+      // チップ
+      ctx.fillStyle = "rgba(40, 92, 152, 0.92)";
+      ctx.beginPath();
+      ctx.roundRect(cx - chipW / 2, top, chipW, chipH, 6);
+      ctx.fill();
+      // 文字
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.fillText(text, cx, top + padY + fs * 0.82);
+    }
+    setArCompositeUrl(canvas.toDataURL("image/jpeg", 0.92));
+  };
+  // 山選択→書き出しへ。合成して結果フェーズを表示。
+  const goExport = () => {
+    setArStep("export");
+    void generateComposite();
+  };
+  // 書き出し→山選択へ戻る（合成をやり直せるように）。
+  const backToSelectFromExport = () => {
+    setArCompositeUrl(null);
+    apiRef.current?.revealAllPeaks(true);
+    setArStep("select");
+  };
+  // 書き出した合成画像をダウンロード。
+  const downloadComposite = () => {
+    if (!arCompositeUrl) return;
+    const a = document.createElement("a");
+    a.href = arCompositeUrl;
+    a.download = "gsi-ar.jpg";
+    a.click();
+  };
+  // 現在のモードの標高誇張を変更（モードごとに記憶）。
   const activeVex = mode === "camera" ? camVex : mapVex;
   const changeVex = (v: number) => {
     if (mode === "camera") setCamVex(v);
@@ -1227,14 +1341,20 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </div>
       )}
 
-      {/* AR進行表示（地点 → 情報 → 合わせる） */}
+      {/* AR進行表示（地点 → 画角 → 向き → 山 → 出力） */}
       {appMode === "ar" && arStep !== "upload" && (
         <div className="ar-steps">
-          {(["locate", "params", "align"] as const).map((k, idx) => {
-            const order = { locate: 0, params: 1, align: 2 };
-            const cur = order[arStep as "locate" | "params" | "align"];
+          {(["locate", "params", "align", "select", "export"] as const).map((k, idx) => {
+            const order: Record<string, number> = {
+              locate: 0,
+              params: 1,
+              align: 2,
+              select: 3,
+              export: 4,
+            };
+            const cur = order[arStep];
             const cls = idx < cur ? "done" : idx === cur ? "active" : "todo";
-            const label = k === "locate" ? "撮影地点" : k === "params" ? "撮影情報" : "合わせる";
+            const label = { locate: "地点", params: "画角", align: "向き", select: "山選択", export: "出力" }[k];
             return (
               <span key={k} className={`ar-step is-${cls}`}>
                 <b>{idx + 1}</b>
@@ -1292,6 +1412,26 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </div>
       )}
 
+      {/* ⑥ 書き出しフェーズ: 合成画像のプレビューとダウンロード */}
+      {appMode === "ar" && arStep === "export" && (
+        <div className="ar-export">
+          <h2>合成画像</h2>
+          {arCompositeUrl ? (
+            <img className="ar-export-preview" src={arCompositeUrl} alt="合成画像プレビュー" />
+          ) : (
+            <p className="ar-export-loading">生成中…</p>
+          )}
+          <div className="ar-export-actions">
+            <button className="ar-btn-sub" onClick={backToSelectFromExport}>
+              ← 山選択へ
+            </button>
+            <button className="ar-btn-main" disabled={!arCompositeUrl} onClick={downloadComposite}>
+              ダウンロード
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 中心レティクル（注視点＝画面中央の目印）。ARでは撮影地点ピンを使うので出さない。 */}
       {appMode === "simulation" && mode === "map" && showCenter && (
         <svg ref={reticleRef} className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
@@ -1332,8 +1472,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       )}
 
 
-      {/* 山頂選択の一括解除チップ（選択が1つ以上ある時だけ表示） */}
-      {showPeaks && peakSelCount > 0 && (
+      {/* 山頂選択の一括解除チップ（シミュレーションのみ。ARは選択フェーズのUIで扱う） */}
+      {appMode === "simulation" && showPeaks && peakSelCount > 0 && (
         <button
           className="peak-clear"
           title="選択した山頂の色と名前表示をすべて解除"
@@ -1348,8 +1488,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </button>
       )}
 
-      {/* カメラ視点モードのHUD（下） */}
-      {mode === "camera" && (
+      {/* カメラ視点モードのHUD（下）。AR書き出し中は隠す（合成パネルを前面に）。 */}
+      {mode === "camera" && !(appMode === "ar" && arStep === "export") && (
         <div className="cam-hud">
           <div className="cam-readout">
             <span>方位 {compass(camHeading)} {Math.round(camHeading)}°</span>
@@ -1393,7 +1533,37 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               )}
             </div>
           )}
-          <div className="cam-hint">ドラッグで見回す ／ ホイール・ピンチで画角</div>
+          {/* シミュレーションの操作ヒント */}
+          {appMode === "simulation" && (
+            <div className="cam-hint">ドラッグで見回す ／ ホイール・ピンチで画角</div>
+          )}
+          {/* AR ④向き合わせ: 説明＋山選択へ */}
+          {appMode === "ar" && arStep === "align" && (
+            <div className="ar-phase-foot">
+              <span className="cam-hint">
+                ドラッグで向き（上下左右）、ピンチ/ホイールで画角を写真に合わせます。あとで微調整できます。
+              </span>
+              <button className="ar-btn-main ar-btn-wide" onClick={goSelect}>
+                次へ：山を選ぶ
+              </button>
+            </div>
+          )}
+          {/* AR ⑤山選択: 写真の山をタップ→書き出しへ */}
+          {appMode === "ar" && arStep === "select" && (
+            <div className="ar-phase-foot">
+              <span className="cam-hint">
+                写真に写っている山をタップして名前を出します（選択 {peakSelCount} 山）
+              </span>
+              <div className="ar-phase-foot-row">
+                <button className="ar-btn-sub" onClick={backToAlign}>
+                  ← 向き調整
+                </button>
+                <button className="ar-btn-main" disabled={peakSelCount === 0} onClick={goExport}>
+                  書き出し →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

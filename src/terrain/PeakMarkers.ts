@@ -91,6 +91,11 @@ export class PeakMarkers {
     return this.peaks[i]?.name ?? "";
   }
 
+  /** 山頂 i の標高(m)。書き出しのラベル「山名＋標高」に使う。 */
+  peakElev(i: number): number {
+    return this.elevM[i] ?? 0;
+  }
+
   /** 山頂 i のワールド座標（Y は現在の VEX 反映済み）。ラベル投影に使う。 */
   worldPos(i: number): THREE.Vector3 {
     return this.world[i];

@@ -1293,3 +1293,66 @@ body,
   width: 100%;
   accent-color: #4f86c6;
 }
+
+/* ARフェーズのフッター（カメラHUD内：向き合わせ／山選択） */
+.ar-phase-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.ar-phase-foot .cam-hint {
+  text-align: center;
+}
+.ar-phase-foot-row {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.ar-btn-wide {
+  width: 100%;
+}
+
+/* ⑥ 書き出しフェーズ（中央パネル） */
+.ar-export {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.95);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 22;
+}
+.ar-export h2 {
+  margin: 0;
+  font-size: 17px;
+  text-align: center;
+}
+.ar-export-preview {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #000;
+}
+.ar-export-loading {
+  margin: 0;
+  padding: 40px 0;
+  text-align: center;
+  color: #aebccf;
+}
+.ar-export-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
