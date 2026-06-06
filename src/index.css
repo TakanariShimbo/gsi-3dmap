@@ -1417,34 +1417,27 @@ body,
 .ar-edit-label:active {
   cursor: grabbing;
 }
+/* 出力(仕上げ)の下部: 案内を上の行に、ボタンを下の行に（間に挟まず窮屈にしない） */
+.ar-edit-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(560px, calc(100vw - 24px));
+}
 .ar-edit-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: min(560px, calc(100vw - 24px));
+  width: 100%;
   justify-content: space-between;
 }
 .ar-edit-hint {
   font-size: 12px;
   color: #aebccf;
   text-align: center;
-  flex: 1;
 }
 
-/* 山選択フェーズ: 参照用の撮影写真サムネ（右上） */
-.ar-select-thumb {
-  position: absolute;
-  top: calc(max(8px, env(safe-area-inset-top, 8px)) + 42px);
-  right: max(8px, env(safe-area-inset-right, 8px));
-  width: min(180px, 32vw);
-  max-height: 30vh;
-  object-fit: contain;
-  border: 1px solid rgba(130, 150, 175, 0.4);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  z-index: 20;
-}
 /* 山選択フェーズ: 決定バー内の選択数 */
 .ar-select-count {
   display: inline-flex;

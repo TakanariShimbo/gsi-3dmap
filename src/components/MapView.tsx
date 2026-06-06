@@ -1739,9 +1739,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               写真に写る山をタップして選びます。ドラッグで回転、ホイール／ピンチでズーム（撮影地点は固定）
             </span>
           </div>
-          {photoUrl && (
-            <img className="ar-select-thumb" src={photoUrl} alt="撮影写真" title="撮影した写真" />
-          )}
           <div className="ar-bottom-bar">
             <button className="ar-btn-sub" onClick={backToParams}>
               <IconChevron dir="left" size={14} />
@@ -1842,24 +1839,26 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               </div>
             ))}
           </div>
-          <div className="ar-edit-bar">
-            <button className="ar-btn-sub" onClick={backToAlignFromExport}>
-              <IconChevron dir="left" size={14} />
-              微調整
-            </button>
+          <div className="ar-edit-foot">
             <span className="ar-edit-hint">
               {arLabels.length > 0
                 ? `名札や点をドラッグで位置を微調整（${arLabels.length}件）`
                 : "写真の枠内に山がありません。微調整で向きを合わせ直してください"}
             </span>
-            <button
-              className="ar-btn-main"
-              disabled={arLabels.length === 0}
-              onClick={downloadComposite}
-            >
-              <IconDownload size={15} />
-              ダウンロード
-            </button>
+            <div className="ar-edit-bar">
+              <button className="ar-btn-sub" onClick={backToAlignFromExport}>
+                <IconChevron dir="left" size={14} />
+                微調整
+              </button>
+              <button
+                className="ar-btn-main"
+                disabled={arLabels.length === 0}
+                onClick={downloadComposite}
+              >
+                <IconDownload size={15} />
+                ダウンロード
+              </button>
+            </div>
           </div>
         </div>
       )}
