@@ -416,12 +416,14 @@ export default function MapView() {
         cam.pitch = 0;
         cam.fov = CAM_FOV_DEFAULT;
         terrain.setClip(null, 0); // 円盤クリップ解除（カメラ視点は切り抜かない）
+        peaks.setCameraMode(true); // カメラ視点では選択(青)の山頂だけ残し、未選択(橙)は隠す
         cameraMode = true;
         controls.enabled = false;
         return { heading: cam.heading, pitch: cam.pitch, fov: cam.fov };
       },
       exitCamera: () => {
         cameraMode = false;
+        peaks.setCameraMode(false); // 地図に戻ったら未選択(橙)の山頂も再表示
         controls.enabled = true;
         if (mapPose) {
           camera.position.copy(mapPose.pos);

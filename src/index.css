@@ -76,9 +76,9 @@ body,
   padding: 2px 7px;
   font-size: 12px;
   font-weight: 600;
-  color: #1a1205;
-  background: rgba(255, 206, 74, 0.94);
-  border: 1px solid rgba(120, 90, 10, 0.5);
+  color: #fff;
+  background: rgba(48, 100, 160, 0.94);
+  border: 1px solid rgba(120, 180, 240, 0.6);
   border-radius: 7px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
@@ -108,7 +108,7 @@ body,
   background: rgba(34, 46, 62, 0.9);
 }
 .peak-clear b {
-  color: #ffce4a;
+  color: #6cb0ff;
   font-weight: 600;
 }
 

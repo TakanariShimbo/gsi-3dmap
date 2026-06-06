@@ -1,4 +1,4 @@
-// 山頂マーカー。全山頂（mountains.json）にグレーの点を置き、タップ／クリックで選択した
+// 山頂マーカー。全山頂（mountains.json）にオレンジの点を置き、タップ／クリックで選択した
 // 山だけ色を変える（複数選択可）。選択した山は名前ラベルを表示する（MapView 側で DOM 描画）。
 //
 // 座標系: X=東 / Y=上 / Z=南（mercator.ts と一致）。点サイズは sizeAttenuation:false で
@@ -9,8 +9,8 @@ import * as THREE from "three";
 import type { MountainHit } from "../lib/mountains";
 import { mercXToWorld, mercYToWorld, elevToWorldY, lonToMercX, latToMercY } from "../lib/mercator";
 
-const COL_BASE = new THREE.Color(0x9aa3b2); // 非選択（グレー）
-const COL_SELECTED = new THREE.Color(0xffce4a); // 選択中（黄）
+const COL_BASE = new THREE.Color(0xff9e3d); // 非選択（オレンジ。地形に埋もれず派手すぎない）
+const COL_SELECTED = new THREE.Color(0x5b9cf0); // 選択中（アプリのアクセントに合わせたブルー）
 const POINT_PX = 7; // 点の画面サイズ(px)
 const PICK_RADIUS_PX = 16; // この画素以内のクリックを「その点をタップ」とみなす
 
@@ -43,7 +43,8 @@ export class PeakMarkers {
   // 各山頂のワールド位置（Y は現在の VEX を反映）。投影・ラベル配置に使う。
   private world: THREE.Vector3[] = [];
   private elevM: number[] = []; // VEX 変更時に Y を再計算するための素の標高
-  private colors!: Float32Array;
+  private colors!: Float32Array; // RGBA（アルファで未選択点の表示/非表示を制御）
+  private hideUnselected = false; // カメラビュー時 true＝未選択(グレー)は隠し、選択(青)だけ出す
   private tmp = new THREE.Vector3();
 
   constructor() {
@@ -90,7 +91,7 @@ export class PeakMarkers {
     this.selected.clear();
     const n = peaks.length;
     const pos = new Float32Array(n * 3);
-    this.colors = new Float32Array(n * 3);
+    this.colors = new Float32Array(n * 4); // RGBA
     this.world = new Array(n);
     this.elevM = new Array(n);
     for (let i = 0; i < n; i++) {
@@ -103,14 +104,34 @@ export class PeakMarkers {
       pos[i * 3 + 2] = z;
       this.world[i] = new THREE.Vector3(x, y, z);
       this.elevM[i] = p.elevationM;
-      this.colors[i * 3] = COL_BASE.r;
-      this.colors[i * 3 + 1] = COL_BASE.g;
-      this.colors[i * 3 + 2] = COL_BASE.b;
+      this.writeColor(i);
     }
     this.geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    this.geom.setAttribute("color", new THREE.BufferAttribute(this.colors, 3));
+    this.geom.setAttribute("color", new THREE.BufferAttribute(this.colors, 4)); // itemSize 4 で頂点アルファ有効
     this.geom.attributes.position.needsUpdate = true;
     this.geom.attributes.color.needsUpdate = true;
+  }
+
+  /** カメラビューモード切替。true で未選択(グレー)点を隠し、選択(青)だけ表示する。 */
+  setCameraMode(on: boolean): void {
+    if (this.hideUnselected === on) return;
+    this.hideUnselected = on;
+    if (!this.peaks.length) return;
+    for (let i = 0; i < this.peaks.length; i++) this.writeColor(i);
+    const attr = this.geom.getAttribute("color") as THREE.BufferAttribute | undefined;
+    if (attr) attr.needsUpdate = true;
+  }
+
+  /** colors[i] を選択状態とモードに応じて RGBA で書き込む（needsUpdate は呼び出し側）。 */
+  private writeColor(i: number): void {
+    const sel = this.selected.has(i);
+    const c = sel ? COL_SELECTED : COL_BASE;
+    const a = sel ? 1 : this.hideUnselected ? 0 : 1; // 未選択はカメラビューで透明
+    const o = i * 4;
+    this.colors[o] = c.r;
+    this.colors[o + 1] = c.g;
+    this.colors[o + 2] = c.b;
+    this.colors[o + 3] = a;
   }
 
   /** VEX 変更時に各山頂の Y（とジオメトリ）を再計算。 */
@@ -154,20 +175,19 @@ export class PeakMarkers {
     const on = !this.selected.has(i);
     if (on) this.selected.add(i);
     else this.selected.delete(i);
-    this.applyColor(i, on ? COL_SELECTED : COL_BASE);
+    this.writeColor(i);
+    const attr = this.geom.getAttribute("color") as THREE.BufferAttribute;
+    attr.needsUpdate = true;
     return on;
   }
 
   /** 全選択を解除してグレーに戻す。 */
   clearSelection(): void {
-    for (const i of this.selected) this.applyColor(i, COL_BASE);
+    const prev = [...this.selected];
     this.selected.clear();
-  }
-
-  private applyColor(i: number, c: THREE.Color): void {
-    const attr = this.geom.getAttribute("color") as THREE.BufferAttribute;
-    attr.setXYZ(i, c.r, c.g, c.b);
-    attr.needsUpdate = true;
+    for (const i of prev) this.writeColor(i);
+    const attr = this.geom.getAttribute("color") as THREE.BufferAttribute | undefined;
+    if (attr) attr.needsUpdate = true;
   }
 
   dispose(): void {
