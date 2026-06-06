@@ -21,7 +21,9 @@ import {
   latToMercY,
   mercXToWorld,
   mercYToWorld,
-  ELEV_SCALE,
+  elevToWorldY,
+  setVerticalExaggeration as applyVEX,
+  getVerticalExaggeration as getVEX,
 } from "../lib/mercator";
 import {
   BASEMAPS,
@@ -98,6 +100,7 @@ export default function MapView() {
     setCamLook: (heading: number, pitch: number) => void;
     setCamFov: (fov: number) => void;
     setCamEyeHeight: (m: number) => void;
+    setVerticalExaggeration: (v: number) => void;
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
   const homeLocRef = useRef<LonLat | null>(null);
@@ -119,6 +122,12 @@ export default function MapView() {
   const [showCenter, setShowCenter] = useState(true);
   // 視点フリーモード（解像度・太陽月・円盤を凍結して視点だけ動かす）。
   const [freeLook, setFreeLook] = useState(false);
+  // 標高の誇張（×1=実寸 1:1:1）。マップ・カメラ共通。
+  const [vex, setVex] = useState(getVEX());
+  const changeVex = (v: number) => {
+    setVex(v);
+    apiRef.current?.setVerticalExaggeration(v);
+  };
 
   // --- カメラ視点モード（3Dマップを一人称カメラとして使う） --- //
   const [mode, setMode] = useState<"map" | "camera">("map");
@@ -228,7 +237,7 @@ export default function MapView() {
     // --- カメラ視点モード --- //
     let cameraMode = false;
     let mapPose: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
-    const cam = { heading: 0, pitch: 0, fov: CAM_FOV_DEFAULT, eyeX: 0, eyeZ: 0, surfaceY: 0, eyeHeightM: CAM_EYE_DEFAULT };
+    const cam = { heading: 0, pitch: 0, fov: CAM_FOV_DEFAULT, eyeX: 0, eyeZ: 0, groundElevM: 0, eyeHeightM: CAM_EYE_DEFAULT };
     const dirTmp = new THREE.Vector3();
     const camRay = new THREE.Raycaster();
     const DOWN = new THREE.Vector3(0, -1, 0);
@@ -316,7 +325,8 @@ export default function MapView() {
         mapPose = { pos: camera.position.clone(), target: controls.target.clone() };
         cam.eyeX = controls.target.x;
         cam.eyeZ = controls.target.z;
-        cam.surfaceY = sampleSurfaceY(cam.eyeX, cam.eyeZ);
+        // 地表のワールドYを実標高(m)に戻して保持（VEX変更にも追従できる）。
+        cam.groundElevM = sampleSurfaceY(cam.eyeX, cam.eyeZ) / Math.max(1e-9, elevToWorldY(1));
         cam.eyeHeightM = eyeHeightM;
         camera.getWorldDirection(dirTmp); // 初期方位＝今の水平向き
         cam.heading = ((Math.atan2(dirTmp.x, -dirTmp.z) * 180) / Math.PI + 360) % 360;
@@ -349,6 +359,10 @@ export default function MapView() {
       },
       setCamEyeHeight: (m) => {
         cam.eyeHeightM = m;
+      },
+      setVerticalExaggeration: (v) => {
+        applyVEX(v);
+        terrain.rebuild(); // 標高はメッシュ頂点に焼き込み済みなので作り直し
       },
     };
 
@@ -463,7 +477,7 @@ export default function MapView() {
     const loop = () => {
       if (cameraMode) {
         // カメラ視点：視点位置に固定し、heading/pitch/fov で向きと画角を作る。
-        const eyeY = cam.surfaceY + cam.eyeHeightM * ELEV_SCALE;
+        const eyeY = elevToWorldY(cam.groundElevM + cam.eyeHeightM);
         camera.position.set(cam.eyeX, eyeY, cam.eyeZ);
         dirAzAlt(cam.heading, cam.pitch, dirTmp);
         camera.lookAt(cam.eyeX + dirTmp.x, eyeY + dirTmp.y, cam.eyeZ + dirTmp.z);
@@ -948,6 +962,17 @@ export default function MapView() {
               onChange={(e) => setShowCenter(e.target.checked)}
             />
             <span>中心マーカーを表示</span>
+          </label>
+          <label className="save-field">
+            <span>標高の誇張: ×{vex.toFixed(1)}{vex === 1 ? "（実寸 1:1:1）" : ""}</span>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.1}
+              value={vex}
+              onChange={(e) => changeVex(Number(e.target.value))}
+            />
           </label>
         </section>
 
