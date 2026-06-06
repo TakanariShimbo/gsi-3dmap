@@ -88,6 +88,7 @@ const CAM_PITCH_LIMIT = 80;
 const CAM_EYE_DEFAULT = 1.6; // 目線高さ(m, 地表から)
 const VEX_MAP_DEFAULT = 1.7; // 地図モードの標高誇張
 const VEX_CAM_DEFAULT = 1.0; // カメラ視点モードの標高誇張（実寸）
+const PEAKS_DEFAULT_ON = true; // 山頂マーカー・山名ラベルを既定で表示するか
 const CAM_CELESTIAL_R = 5000; // カメラ視点で太陽月を置く半径(ワールド≒遠方の空)
 
 // Date → <input type="date"> 用のローカル日付文字列 (YYYY-MM-DD)。
@@ -148,8 +149,8 @@ export default function MapView() {
   // 空グラデーション表示。
   const [showSky, setShowSky] = useState(true);
   const showSkyRef = useRef(true);
-  // 山頂マーカー表示（既定オフ。初回有効化時に山岳データを遅延ロード）。
-  const [showPeaks, setShowPeaks] = useState(false);
+  // 山頂マーカー表示（既定オン。初回有効化時に山岳データを遅延ロード）。
+  const [showPeaks, setShowPeaks] = useState(PEAKS_DEFAULT_ON);
   const peaksLoadedRef = useRef(false);
   // 選択中（色＋名前表示）の山の数。0より大きいとき画面に一括解除チップを出す。
   const [peakSelCount, setPeakSelCount] = useState(0);
@@ -478,6 +479,13 @@ export default function MapView() {
         peaks.clearSelection(); // ラベルの選択強調は次フレームの updatePeakLabels で反映
       },
     };
+
+    // 既定で山頂表示ON。初回マウント時に山岳データを遅延ロードして点・ラベルを出す。
+    if (PEAKS_DEFAULT_ON) {
+      peaksLoadedRef.current = true;
+      apiRef.current.setPeaksVisible(true);
+      loadAllMountains().then((data) => apiRef.current?.setPeaksData(data));
+    }
 
     // --- カメラ視点の見回し操作（1本指=向き / 2本指ピンチ=画角 / ホイール=画角） --- //
     const pointers = new Map<number, { x: number; y: number }>();
