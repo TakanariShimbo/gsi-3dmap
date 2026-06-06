@@ -49,6 +49,26 @@ export function IconDownload({ size = 16, className }: Props) {
   );
 }
 
+/** 画像（写真）。撮影画像の取り込み用。 */
+export function IconImage({ size = 16, className }: Props) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8.5" cy="10" r="1.6" />
+      <path d="M5 17 L10 12 L13 15 L16 12 L20 16" />
+    </svg>
+  );
+}
+
+/** 線のシェブロン（ボタンの前後ナビ用）。dir で左右。 */
+export function IconChevron({ dir = "right", size = 16, className }: Props & { dir?: "left" | "right" }) {
+  return (
+    <svg {...svgProps(size, className)}>
+      {dir === "right" ? <path d="M9.5 5 L16.5 12 L9.5 19" /> : <path d="M14.5 5 L7.5 12 L14.5 19" />}
+    </svg>
+  );
+}
+
 /** 三角キャレット（パン操作）。dir で向きを回す。 */
 export function IconCaret({ dir = "up", size = 16, className }: Props & { dir?: "up" | "down" | "left" | "right" }) {
   const rot = { up: 0, right: 90, down: 180, left: 270 }[dir];

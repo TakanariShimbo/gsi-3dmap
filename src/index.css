@@ -165,6 +165,7 @@ body,
   border-radius: 12px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  z-index: 20; /* 写真オーバーレイ(z4)より前面に */
 }
 .cam-readout {
   display: flex;
@@ -190,6 +191,88 @@ body,
   text-align: center;
 }
 
+/* --- 写真オーバーレイ（位置・サイズは描画ループが写真枠に合わせて設定） --- */
+.photo-overlay {
+  position: absolute;
+  inset: 0; /* ループが left/top/width/height で写真枠に上書きする */
+  object-fit: fill; /* 枠は写真アスペクトなので fill で一致 */
+  pointer-events: none; /* 下のキャンバスでドラッグ・ピンチ操作を続けられる */
+  z-index: 4; /* キャンバス(0)より上、山名ラベル(6)・HUD(20)より下 */
+}
+.cam-photo {
+  display: flex;
+  justify-content: center;
+}
+.cam-photo-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #e6edf5;
+  background: rgba(79, 134, 198, 0.22);
+  border: 1px solid rgba(130, 150, 175, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.cam-photo-pick:hover {
+  background: rgba(79, 134, 198, 0.34);
+}
+.cam-photo-ctrl {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+.cam-photo-opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  font-size: 12px;
+  color: #cdd6e2;
+}
+.cam-photo-opacity input[type="range"] {
+  width: 100%;
+  accent-color: #4f86c6;
+}
+.cam-photo-clear {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #e6edf5;
+  background: rgba(40, 48, 60, 0.7);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cam-photo-clear:hover {
+  background: rgba(60, 70, 86, 0.8);
+}
+
+/* ホームへ戻る（左上・メニューの右） */
+.home-btn {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: calc(max(8px, env(safe-area-inset-left, 8px)) + 50px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  color: #e6edf5;
+  background: rgba(18, 24, 33, 0.78);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 10px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 23; /* 出力(仕上げ)の全画面オーバーレイ(z22)でも常に押せるように */
+}
+.home-btn:hover {
+  background: rgba(28, 36, 48, 0.88);
+}
+
 /* --- メニュー開閉ボタン（左上） --- */
 .menu-toggle {
   position: absolute;
@@ -205,7 +288,7 @@ body,
   cursor: pointer;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  z-index: 20;
+  z-index: 23; /* 出力(仕上げ)の全画面オーバーレイ(z22)でも常に押せるように */
 }
 .menu-toggle:hover {
   background: rgba(34, 46, 62, 0.85);
@@ -892,4 +975,544 @@ body,
 .nav-ico--tilt-up {
   transform: rotate(-135deg);
   margin-bottom: -3px;
+}
+
+/* --- ホーム画面（入場時のランディング） --- */
+.home {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(60, 90, 140, 0.35), transparent 70%),
+    linear-gradient(180deg, #0c1118 0%, #0a0d12 100%);
+  color: #e6edf5;
+  overflow: auto;
+}
+.home-inner {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.home-head {
+  text-align: center;
+}
+.home-head h1 {
+  margin: 0;
+  font-size: clamp(28px, 6vw, 40px);
+  letter-spacing: 0.04em;
+}
+.home-head p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #9fb0c4;
+}
+.home-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: #e6edf5;
+  background: rgba(20, 27, 38, 0.8);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 16px;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.home-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(120, 180, 240, 0.6);
+  background: rgba(28, 38, 54, 0.9);
+}
+.home-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  color: #bcd6f5;
+  background: rgba(79, 134, 198, 0.2);
+}
+.home-card-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.home-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9fb0c4;
+}
+
+/* --- ARの入口（写真未選択時の案内） --- */
+.ar-intro {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 24px;
+  text-align: center;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.92);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 18;
+}
+.ar-intro-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  color: #bcd6f5;
+  background: rgba(79, 134, 198, 0.2);
+}
+.ar-intro h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.ar-intro p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #aebccf;
+}
+.ar-intro-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(79, 134, 198, 0.9);
+  border: 1px solid rgba(120, 180, 240, 0.6);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ar-intro-pick:hover {
+  background: rgba(94, 150, 214, 0.95);
+}
+
+/* --- ARウィザード（地点 → 情報 → 合わせる） --- */
+/* 進行表示（上中央） */
+.ar-steps {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(14, 19, 27, 0.82);
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 23; /* 出力(仕上げ)の全画面オーバーレイ(z22)より前面に出す */
+}
+.ar-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #8294aa;
+}
+.ar-step b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  border-radius: 50%;
+  background: rgba(130, 150, 175, 0.25);
+  color: #cdd6e2;
+}
+.ar-step.is-active {
+  color: #eaf2fb;
+}
+.ar-step.is-active b {
+  background: #4f86c6;
+  color: #fff;
+}
+.ar-step.is-done {
+  color: #9fb0c4;
+}
+.ar-step.is-done b {
+  background: rgba(79, 134, 198, 0.45);
+  color: #eaf2fb;
+}
+
+/* 撮影地点フェーズの案内（進行表示の下） */
+.ar-locate-hint {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top, 8px)) + 42px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #eaf2fb;
+  background: rgba(14, 19, 27, 0.82);
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.ar-locate-hint > svg {
+  flex: 0 0 auto;
+  color: #6cb0ff;
+}
+
+/* 撮影地点ピン（地表に追従。下端が地点を指す） */
+.ar-pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  color: #ff5a3c;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  z-index: 6;
+}
+
+/* 下部の決定バー（地点/情報フェーズ共通） */
+.ar-bottom-bar {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 20;
+}
+.ar-bottom-bar--inline {
+  position: static;
+  transform: none;
+  margin-top: 4px;
+  justify-content: flex-end;
+}
+.ar-btn-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(79, 134, 198, 0.95);
+  border: 1px solid rgba(120, 180, 240, 0.6);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ar-btn-main:hover {
+  background: rgba(94, 150, 214, 1);
+}
+.ar-btn-main:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ar-btn-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 11px 16px;
+  font-size: 13px;
+  color: #e6edf5;
+  background: rgba(28, 36, 48, 0.85);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ar-btn-sub:hover {
+  background: rgba(40, 50, 66, 0.9);
+}
+.ar-btn-sub > svg {
+  opacity: 0.7;
+}
+
+/* 撮影情報フェーズ（中央パネル） */
+.ar-params {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 22px 18px;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.93);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 21;
+}
+.ar-params h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.ar-params p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #aebccf;
+}
+.ar-fov {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.ar-fov input[type="range"] {
+  width: 100%;
+  accent-color: #4f86c6;
+}
+
+/* ARフェーズのフッター（カメラHUD内：向き合わせ／山選択） */
+.ar-phase-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.ar-phase-foot .cam-hint {
+  text-align: center;
+}
+.ar-phase-foot-row {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.ar-btn-wide {
+  width: 100%;
+}
+
+/* ⑤ 出力(仕上げ): 写真の上で名札・点をドラッグ編集する全画面 */
+.ar-edit {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 52px 12px 12px; /* 上は進行表示の分を空ける */
+  background: #06080c;
+  z-index: 22;
+}
+.ar-edit-stage {
+  position: relative;
+  /* --ar(写真のW/H)とaspect-ratioはinlineで指定。高さは縦・横どちらの制約でも収まる値に。 */
+  height: min(calc(100vh - 52px - 84px), calc((100vw - 24px) / var(--ar, 1.5)));
+  background: #000;
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+}
+.ar-edit-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.ar-edit-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.ar-edit-dot {
+  position: absolute;
+  width: 20px; /* つかみやすいよう当たり判定は広め（見た目は中の白丸のみ） */
+  height: 20px;
+  transform: translate(-50%, -50%);
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.ar-edit-dot::before {
+  content: "";
+  position: absolute;
+  inset: 6px; /* 見た目は約8pxの白丸（従来22pxの約1/3） */
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.ar-edit-dot:active {
+  cursor: grabbing;
+}
+.ar-edit-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 4px 9px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(40, 92, 152, 0.94);
+  border: 1px solid rgba(120, 180, 240, 0.7);
+  border-radius: 7px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ar-edit-label:active {
+  cursor: grabbing;
+}
+.ar-edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 24px));
+  justify-content: space-between;
+}
+.ar-edit-hint {
+  font-size: 12px;
+  color: #aebccf;
+  text-align: center;
+  flex: 1;
+}
+
+/* 山選択フェーズ: 参照用の撮影写真サムネ（右上） */
+.ar-select-thumb {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top, 8px)) + 42px);
+  right: max(8px, env(safe-area-inset-right, 8px));
+  width: min(180px, 32vw);
+  max-height: 30vh;
+  object-fit: contain;
+  border: 1px solid rgba(130, 150, 175, 0.4);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+}
+/* 山選択フェーズ: 決定バー内の選択数 */
+.ar-select-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #cdd6e2;
+  white-space: nowrap;
+}
+.ar-bottom-bar {
+  align-items: center;
+}
+
+/* 向き・画角フェーズ: コンパスダイヤル */
+.compass-dial {
+  align-self: center;
+  touch-action: none;
+  cursor: grab;
+}
+.compass-dial:active {
+  cursor: grabbing;
+}
+.compass-bg {
+  fill: rgba(20, 27, 38, 0.85);
+  stroke: rgba(130, 150, 175, 0.45);
+  stroke-width: 1.2;
+}
+.compass-wedge {
+  fill: rgba(95, 160, 230, 0.38);
+  stroke: rgba(120, 180, 240, 0.7);
+  stroke-width: 0.6;
+}
+.compass-needle {
+  stroke: #ffb74d;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.compass-needle-tip {
+  fill: #ffb74d;
+}
+.compass-center {
+  fill: #e6edf5;
+}
+.compass-label {
+  fill: #aebccf;
+  font-size: 8px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+.compass-label--n {
+  fill: #ff8a6a;
+  font-weight: 700;
+}
+/* 向き・画角の読み値 */
+.ar-readout {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #cdd6e2;
+}
+
+/* 向き・画角フェーズ: 下部パネル（視野コーンは3Dマップ上に描画） */
+.ar-aim-bar {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.9);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 20;
+}
+.ar-aim-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
 }

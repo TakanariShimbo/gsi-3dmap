@@ -46,6 +46,11 @@ export class PeakMarkers {
   private elevM: number[] = []; // VEX 変更時に Y を再計算するための素の標高
   private colors!: Float32Array; // RGBA（アルファで未選択点の表示/非表示を制御）
   private hideUnselected = false; // カメラビュー時 true＝未選択(グレー)は隠し、選択(青)だけ出す
+  // 円盤クリップ（太陽・月モードで地形を丸く切り抜く際、外側の点・ラベルも隠す）。
+  private clipActive = false;
+  private clipX = 0;
+  private clipZ = 0;
+  private clipR2 = 0;
   private tmp = new THREE.Vector3();
 
   constructor() {
@@ -84,6 +89,11 @@ export class PeakMarkers {
 
   peakName(i: number): string {
     return this.peaks[i]?.name ?? "";
+  }
+
+  /** 山頂 i の標高(m)。書き出しのラベル「山名＋標高」に使う。 */
+  peakElev(i: number): number {
+    return this.elevM[i] ?? 0;
   }
 
   /** 山頂 i のワールド座標（Y は現在の VEX 反映済み）。ラベル投影に使う。 */
@@ -132,11 +142,41 @@ export class PeakMarkers {
     if (attr) attr.needsUpdate = true;
   }
 
+  /** 円盤クリップを設定（中心・半径ワールド）。null で解除。外側の点はアルファ0で隠す。
+   *  毎フレーム呼ばれるが、変化が無ければ書き換えない。 */
+  setClipDisk(center: { x: number; z: number } | null, radiusWorld: number): void {
+    const active = center != null;
+    const cx = center ? center.x : 0;
+    const cz = center ? center.z : 0;
+    const r2 = radiusWorld * radiusWorld;
+    if (active === this.clipActive && cx === this.clipX && cz === this.clipZ && r2 === this.clipR2) {
+      return;
+    }
+    this.clipActive = active;
+    this.clipX = cx;
+    this.clipZ = cz;
+    this.clipR2 = r2;
+    if (!this.peaks.length) return;
+    for (let i = 0; i < this.peaks.length; i++) this.writeColor(i);
+    const attr = this.geom.getAttribute("color") as THREE.BufferAttribute | undefined;
+    if (attr) attr.needsUpdate = true;
+  }
+
+  /** 円盤クリップで隠れる山頂か（ラベル側の表示判定にも使う）。 */
+  isHiddenByClip(i: number): boolean {
+    if (!this.clipActive) return false;
+    const w = this.world[i];
+    const dx = w.x - this.clipX;
+    const dz = w.z - this.clipZ;
+    return dx * dx + dz * dz > this.clipR2;
+  }
+
   /** colors[i] を選択状態とモードに応じて RGBA で書き込む（needsUpdate は呼び出し側）。 */
   private writeColor(i: number): void {
     const sel = this.selected.has(i);
     const c = sel ? COL_SELECTED : COL_BASE;
-    const a = sel ? 1 : this.hideUnselected ? 0 : 1; // 未選択はカメラビューで透明
+    let a = sel ? 1 : this.hideUnselected ? 0 : 1; // 未選択はカメラビューで透明
+    if (a > 0 && this.isHiddenByClip(i)) a = 0; // 円盤クリップの外は隠す
     const o = i * 4;
     this.colors[o] = c.r;
     this.colors[o + 1] = c.g;
