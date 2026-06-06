@@ -14,6 +14,8 @@ import {
   IconPlus,
   IconMinus,
   IconLocate,
+  IconCamera,
+  IconMap,
 } from "./icons";
 import {
   worldToLonLat,
@@ -23,7 +25,6 @@ import {
   mercYToWorld,
   elevToWorldY,
   setVerticalExaggeration as applyVEX,
-  getVerticalExaggeration as getVEX,
 } from "../lib/mercator";
 import {
   BASEMAPS,
@@ -74,6 +75,8 @@ const CAM_FOV_MIN = 20;
 const CAM_FOV_MAX = 90;
 const CAM_PITCH_LIMIT = 80;
 const CAM_EYE_DEFAULT = 1.6; // 目線高さ(m, 地表から)
+const VEX_MAP_DEFAULT = 1.7; // 地図モードの標高誇張
+const VEX_CAM_DEFAULT = 1.0; // カメラ視点モードの標高誇張（実寸）
 
 // 方位az(0=北,90=東)・仰角alt(0=水平) → 単位方向(X=東,Y=上,Z=南で北=-Z)。
 function dirAzAlt(azDeg: number, altDeg: number, out: THREE.Vector3): THREE.Vector3 {
@@ -122,12 +125,9 @@ export default function MapView() {
   const [showCenter, setShowCenter] = useState(true);
   // 視点フリーモード（解像度・太陽月・円盤を凍結して視点だけ動かす）。
   const [freeLook, setFreeLook] = useState(false);
-  // 標高の誇張（×1=実寸 1:1:1）。マップ・カメラ共通。
-  const [vex, setVex] = useState(getVEX());
-  const changeVex = (v: number) => {
-    setVex(v);
-    apiRef.current?.setVerticalExaggeration(v);
-  };
+  // 標高の誇張（×1=実寸 1:1:1）。モードごとに既定が異なる（地図1.7 / カメラ1.0）。
+  const [mapVex, setMapVex] = useState(VEX_MAP_DEFAULT);
+  const [camVex, setCamVex] = useState(VEX_CAM_DEFAULT);
 
   // --- カメラ視点モード（3Dマップを一人称カメラとして使う） --- //
   const [mode, setMode] = useState<"map" | "camera">("map");
@@ -719,17 +719,26 @@ export default function MapView() {
       setFreeLook(false);
       apiRef.current?.setFreeLook(false);
     }
-    const init = apiRef.current?.enterCamera(camEyeHeight);
+    const init = apiRef.current?.enterCamera(camEyeHeight); // 地表高さは現在(地図VEX)で取得
     if (init) {
       setCamHeading(init.heading);
       setCamPitch(init.pitch);
       setCamFov(init.fov);
     }
+    apiRef.current?.setVerticalExaggeration(camVex); // カメラ用VEXへ（地形再生成）
     setMode("camera");
   };
   const exitCameraMode = () => {
     apiRef.current?.exitCamera();
+    apiRef.current?.setVerticalExaggeration(mapVex); // 地図用VEXへ戻す（地形再生成）
     setMode("map");
+  };
+  // 現在モードの標高誇張を変更（モードごとに記憶）。
+  const activeVex = mode === "camera" ? camVex : mapVex;
+  const changeVex = (v: number) => {
+    if (mode === "camera") setCamVex(v);
+    else setMapVex(v);
+    apiRef.current?.setVerticalExaggeration(v);
   };
   const changeCamEyeHeight = (m: number) => {
     setCamEyeHeight(m);
@@ -802,24 +811,14 @@ export default function MapView() {
         ☰
       </button>
 
-      {/* 自由視点（マップモードのみ） */}
-      {mode === "map" && (
-        <button
-          className={`freelook-toggle${freeLook ? " is-active" : ""}`}
-          title="自由視点：地図解像度・太陽・月を固定したまま視点だけ動かす。解除すると元の視点へ戻ります"
-          onClick={toggleFreeLook}
-        >
-          {freeLook ? "自由視点：ON" : "自由視点"}
-        </button>
-      )}
-
-      {/* 地図⇄カメラ視点の切替（上中央） */}
+      {/* 地図⇄カメラ視点の切替（右上） */}
       <button
         className={`mode-toggle${mode === "camera" ? " is-camera" : ""}`}
         title={mode === "map" ? "カメラ視点：今見ている地点に立って見回す" : "地図に戻る"}
         onClick={mode === "map" ? enterCameraMode : exitCameraMode}
       >
-        {mode === "map" ? "📷 カメラ視点" : "🗺 地図に戻る"}
+        {mode === "map" ? <IconCamera size={16} /> : <IconMap size={16} />}
+        <span>{mode === "map" ? "カメラ視点" : "地図に戻る"}</span>
       </button>
 
       {/* カメラ視点モードのHUD（下） */}
@@ -964,13 +963,16 @@ export default function MapView() {
             <span>中心マーカーを表示</span>
           </label>
           <label className="save-field">
-            <span>標高の誇張: ×{vex.toFixed(1)}{vex === 1 ? "（実寸 1:1:1）" : ""}</span>
+            <span>
+              標高の誇張（{mode === "camera" ? "カメラ" : "地図"}）: ×{activeVex.toFixed(1)}
+              {activeVex === 1 ? "（実寸 1:1:1）" : ""}
+            </span>
             <input
               type="range"
               min={1}
               max={3}
               step={0.1}
-              value={vex}
+              value={activeVex}
               onChange={(e) => changeVex(Number(e.target.value))}
             />
           </label>
@@ -1137,9 +1139,11 @@ export default function MapView() {
         </section>
       </aside>
 
-      {/* カメラ操作リモコン（右下、マップモードのみ・表示切替可） */}
-      {mode === "map" && showRemote && (
-        <div className="nav-controls">
+      {/* 右下クラスタ（マップモードのみ）: リモコン＋その下に自由視点 */}
+      {mode === "map" && (
+        <div className="controls-br">
+          {showRemote && (
+            <div className="nav-controls">
           <div className="nav-row">
             <button className="nav-btn" title="水平に近づける" {...hold({ tilt: 1 }, "tilt")}>
               <span className="nav-ico nav-ico--tilt-up" />
@@ -1181,6 +1185,16 @@ export default function MapView() {
               <IconMinus />
             </button>
           </div>
+            </div>
+          )}
+          {/* 自由視点（リモコンの下） */}
+          <button
+            className={`freelook-toggle${freeLook ? " is-active" : ""}`}
+            title="自由視点：地図解像度・太陽・月を固定したまま視点だけ動かす。解除すると元の視点へ戻ります"
+            onClick={toggleFreeLook}
+          >
+            {freeLook ? "自由視点：ON" : "自由視点"}
+          </button>
         </div>
       )}
 
