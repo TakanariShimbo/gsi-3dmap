@@ -12,6 +12,29 @@ const BASE_R = 100; // ローカル半径（group.scale で実寸へ）
 const SUN_COLOR = 0xffe08a;
 const MOON_COLOR = 0xc9d3e2;
 
+// 月の満ち欠けシェーダ: 月球面の各点で dot(法線, 太陽方向) を見て、太陽を向いた面を明るく、
+// 反対側を暗く塗る。境界(ターミネータ)は smoothstep でやや締めて、はっきりした満ち欠けに。
+// 3D空間で正しく陰影が付くので、カメラ視点でも見る角度に応じた正しい欠け方になる。
+const MOON_VERT = /* glsl */ `
+varying vec3 vWN;
+void main() {
+  vWN = normalize(mat3(modelMatrix) * normal); // ワールド法線（群は回転なし＋等方スケール）
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+const MOON_FRAG = /* glsl */ `
+precision highp float;
+varying vec3 vWN;
+uniform vec3 uSunDir; // ワールド・正規化済み
+uniform vec3 uLit;
+uniform vec3 uDark;
+void main() {
+  float d = dot(normalize(vWN), normalize(uSunDir));
+  float lit = smoothstep(-0.03, 0.05, d); // ターミネータをやや締める
+  gl_FragColor = vec4(mix(uDark, uLit, lit), 1.0);
+}
+`;
+
 /** 方位az・高度alt（度）→ 単位方向ベクトル（X=東, Y=上, Z=南で北=-Z）。 */
 function dirFromAzAlt(azDeg: number, altDeg: number): THREE.Vector3 {
   const a = (azDeg * Math.PI) / 180;
@@ -27,18 +50,11 @@ export class CelestialLayer {
   readonly group = new THREE.Group();
   private bodies = new THREE.Group();
   private tracks = new THREE.Group();
-  private moonLight: THREE.DirectionalLight;
   private horizon: THREE.LineLoop;
 
   constructor() {
     this.group.visible = false;
-
-    // 月相用ライト（レイヤ1）: 月だけを太陽方向から照らす。地形(レイヤ0)には影響しない。
-    this.moonLight = new THREE.DirectionalLight(0xffffff, 1.6);
-    this.moonLight.layers.set(1);
-    const moonAmbient = new THREE.AmbientLight(0x6b7488, 0.4);
-    moonAmbient.layers.set(1);
-    this.group.add(this.moonLight, moonAmbient, this.bodies, this.tracks);
+    this.group.add(this.bodies, this.tracks);
 
     // 地平線リング（ローカル y=0 平面・半径 BASE_R）。
     const ring: THREE.Vector3[] = [];
@@ -89,27 +105,25 @@ export class CelestialLayer {
       this.bodies.add(sun, glow);
     }
 
-    // 月（レイヤ1・太陽方向からの平行光で満ち欠け）。
+    // 月（球面を太陽方向で自前シェーディング＝満ち欠け）。
     if (sky.moon.visible) {
+      const sunDir = dirFromAzAlt(sky.sun.azimuthDeg, sky.sun.altitudeDeg);
       const moon = new THREE.Mesh(
-        new THREE.SphereGeometry(5, 28, 20),
-        new THREE.MeshStandardMaterial({
-          color: MOON_COLOR,
-          roughness: 1,
-          metalness: 0,
-          transparent: true,
-          opacity: 0.95,
+        new THREE.SphereGeometry(5, 40, 28),
+        new THREE.ShaderMaterial({
+          vertexShader: MOON_VERT,
+          fragmentShader: MOON_FRAG,
+          uniforms: {
+            uSunDir: { value: sunDir.clone() },
+            uLit: { value: new THREE.Color(MOON_COLOR) },
+            uDark: { value: new THREE.Color(0x0f141c) }, // しっかり暗い影側（わずかに見える）
+          },
           fog: false,
         }),
       );
-      moon.layers.set(1);
       moon.position.copy(dirFromAzAlt(sky.moon.azimuthDeg, sky.moon.altitudeDeg)).multiplyScalar(BASE_R);
       this.bodies.add(moon);
     }
-    // 月ライトは常に太陽方向から（方向＝平行光）。昼夜問わず正しい満ち欠けになる。
-    this.moonLight.position
-      .copy(dirFromAzAlt(sky.sun.azimuthDeg, sky.sun.altitudeDeg))
-      .multiplyScalar(BASE_R * 2);
 
     // 軌跡（過去→未来の明度グラデーション）。
     this.addTrack(sunTrack, 0xffce6a);

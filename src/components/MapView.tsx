@@ -207,7 +207,6 @@ export default function MapView() {
       9000,
     );
     camera.position.set(0, 2200, 2600);
-    camera.layers.enable(1); // 月（レイヤ1）も描画する
 
     const controls = new MapControls(camera, renderer.domElement);
     controls.enableDamping = true;
