@@ -318,7 +318,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       for (let i = 0; i < peakLabelEls.length; i++) {
         const el = peakLabelEls[i];
         const sel = peaks.isSelected(i);
-        if (onlySelected && !sel) {
+        // カメラ視点では未選択を隠す。太陽月モードの円盤クリップ外の山名も隠す。
+        if ((onlySelected && !sel) || peaks.isHiddenByClip(i)) {
           if (el.style.display !== "none") el.style.display = "none";
           continue;
         }
@@ -418,6 +419,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         celestial.setVisible(on);
         if (!on) {
           terrain.setClip(null, 0); // 解除時は全面表示へ
+          peaks.setClipDisk(null, 0); // 山頂点・ラベルのクリップも解除
           lastObsWorld = null;
         }
       },
@@ -465,6 +467,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             ? THREE.MathUtils.clamp(override.fovDeg, CAM_FOV_MIN, CAM_FOV_MAX) // EXIF焦点距離由来
             : CAM_FOV_DEFAULT;
         terrain.setClip(null, 0); // 円盤クリップ解除（カメラ視点は切り抜かない）
+        peaks.setClipDisk(null, 0); // 山頂点・ラベルのクリップも解除（カメラ視点は全山対象）
         peaks.setCameraMode(true); // カメラ視点では選択(青)の山頂だけ残し、未選択(橙)は隠す
         cameraMode = true;
         controls.enabled = false;
@@ -726,6 +729,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           celestialCenter.set(tx, controls.target.y, tz);
           const diskR = THREE.MathUtils.clamp(camera.position.distanceTo(celestialCenter) * 0.5, 2, 4000);
           terrain.setClip({ x: tx, z: tz }, diskR);
+          peaks.setClipDisk({ x: tx, z: tz }, diskR); // 円盤の外の山頂点・ラベルを隠す
           celestial.place(celestialCenter, diskR * 1.1);
           // 中心が十分動いたら sky(太陽月の方位高度・軌跡)を計算し直す。
           const thr = Math.max(1, diskR * 0.08);
