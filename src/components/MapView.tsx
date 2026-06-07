@@ -146,7 +146,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     setControlMode: (mode: "map" | "aim" | "orbit") => void; // 地図操作: 通常 / 向き決め / 回転のみ
     // 地図(俯瞰)の2D(真上固定)/3D(傾け可)切替。center指定で撮影地点中心に寄せ、3Dはheading背後上空から見下ろす。
     setMapDimension: (dim: "2d" | "3d", center?: { lon: number; lat: number }, headingDeg?: number) => void;
-    setViewCone: (lon: number, lat: number, headingDeg: number, fovDeg: number, flat: boolean) => void; // 視野コーン（flat=2D）
+    setViewCone: (lon: number, lat: number, headingDeg: number, fovDeg: number) => void; // 視野コーン（地形にドレープ）
     hideViewCone: () => void;
   } | null>(null);
   // 直近に判明した現在地（起動時＋現在地ボタンで更新）。ホームの基準に使う。
@@ -459,179 +459,143 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     previewRing.visible = false;
     scene.add(previewRing);
 
-    // --- AR向き決め: 撮影地点から「写る方向・範囲」を示す視野コーン（扇形）を地図上に描く --- //
-    // 視野コーンは「扇形を縦に押し出した3Dゾーン（プリズム）」。地形と交差させて浮かせない。
-    const VC_N = 28; // 弧の分割数
+    // --- AR向き決め: 撮影地点から「写る方向・範囲」を示す視野コーン（扇形）を地図に描く --- //
+    // 扇は地形に沿わせて（ドレープ）地図に貼り付ける。2D/3Dとも同じ見た目で、3Dでは手前の尾根が
+    // 扇を遮り、高い山は扇を突き抜けるので「地面に直接描いた」ように見える（プリズムや高い面は使わない）。
+    const VC_N = 24; // 角度（扇の弧）の分割数
+    const VC_NR = 10; // 半径方向の分割数（apex付近を密にして地形に追従。レイキャスト数とのバランス）
     const VIEWCONE_R = 180; // コーンの長さ(world)の上限。線を遠くまで伸ばして方向を示す
-    const VC_TOP_M = 3900; // ゾーン上端の標高(m)。富士山(3776m)も収まる余裕
-    const VC_BOT_M = -300; // ゾーン下端の標高(m)。地面を貫通させて浮かないように
-    // 頂点: 下apex=0 / 下弧 i=1+i(i:0..N) / 上apex=N+2 / 上弧 i=N+3+i
-    const vcBotApex = 0;
-    const vcTopApex = VC_N + 2;
-    const vcBotArc = (i: number) => 1 + i;
-    const vcTopArc = (i: number) => VC_N + 3 + i;
-    const viewConePos = new Float32Array(2 * (VC_N + 2) * 3);
+    const VC_COL = { r: 0.37, g: 0.63, b: 0.9 }; // 塗り・線の共通色
+    const VC_APEX_ALPHA = 0.34; // 塗りの中心の濃さ（外周へ0でフェード）
+    const VC_LINE_ALPHA = 0.5; // 線（中心・両端）の中心の濃さ（外周へ0）
+    const vcLift = elevToWorldY(15); // 地表からのわずかな浮き（塗りの z-fight 回避）
+    const vcLineLift = elevToWorldY(35); // 線は塗りより少し上に置いて埋もれさせない
+    const gv = (r: number, i: number) => r * (VC_N + 1) + i; // 塗りグリッドの頂点番号（リングr×列i）
+    // 塗り（扇）: (VC_NR+1)リング × (VC_N+1)列 の三角形グリッドを地表にドレープ。
+    const viewConePos = new Float32Array((VC_NR + 1) * (VC_N + 1) * 3);
     const viewConeGeom = new THREE.BufferGeometry();
     viewConeGeom.setAttribute("position", new THREE.BufferAttribute(viewConePos, 3));
-    // 頂点アルファで中心(濃い)→弧(透明)のグラデーション。弧より外は線だけ見える。
-    const VC_APEX_ALPHA = 0.34;
-    const viewConeCol = new Float32Array(2 * (VC_N + 2) * 4);
     {
-      const cr = 0.37;
-      const cg = 0.63;
-      const cb = 0.9;
-      const setC = (vi: number, a: number) => {
-        const o = vi * 4;
-        viewConeCol[o] = cr;
-        viewConeCol[o + 1] = cg;
-        viewConeCol[o + 2] = cb;
-        viewConeCol[o + 3] = a;
-      };
-      setC(vcBotApex, VC_APEX_ALPHA);
-      setC(vcTopApex, VC_APEX_ALPHA);
-      for (let i = 0; i <= VC_N; i++) {
-        setC(vcBotArc(i), 0); // 弧（遠端）は透明
-        setC(vcTopArc(i), 0);
+      // 頂点アルファで中心(濃い)→外周(透明)。色は一定なので初期化時に一度設定。
+      const col = new Float32Array((VC_NR + 1) * (VC_N + 1) * 4);
+      for (let r = 0; r <= VC_NR; r++) {
+        const a = VC_APEX_ALPHA * (1 - r / VC_NR);
+        for (let i = 0; i <= VC_N; i++) {
+          const o = gv(r, i) * 4;
+          col[o] = VC_COL.r; col[o + 1] = VC_COL.g; col[o + 2] = VC_COL.b; col[o + 3] = a;
+        }
       }
+      viewConeGeom.setAttribute("color", new THREE.BufferAttribute(col, 4));
     }
-    viewConeGeom.setAttribute("color", new THREE.BufferAttribute(viewConeCol, 4));
-    const triIdx: number[] = [];
-    for (let i = 0; i < VC_N; i++) {
-      triIdx.push(vcBotApex, vcBotArc(i), vcBotArc(i + 1)); // 底面
-      triIdx.push(vcTopApex, vcTopArc(i + 1), vcTopArc(i)); // 天面
-      triIdx.push(vcBotArc(i), vcBotArc(i + 1), vcTopArc(i + 1)); // 外周壁
-      triIdx.push(vcBotArc(i), vcTopArc(i + 1), vcTopArc(i));
+    {
+      const idx: number[] = [];
+      for (let r = 0; r < VC_NR; r++) {
+        for (let i = 0; i < VC_N; i++) {
+          const a = gv(r, i), b = gv(r, i + 1), c = gv(r + 1, i + 1), d = gv(r + 1, i);
+          idx.push(a, b, c, a, c, d);
+        }
+      }
+      viewConeGeom.setIndex(idx);
     }
-    triIdx.push(vcBotApex, vcBotArc(0), vcTopArc(0), vcBotApex, vcTopArc(0), vcTopApex); // 左壁
-    triIdx.push(vcBotApex, vcTopArc(VC_N), vcBotArc(VC_N), vcBotApex, vcTopApex, vcTopArc(VC_N)); // 右壁
-    viewConeGeom.setIndex(triIdx);
     const viewCone = new THREE.Mesh(
       viewConeGeom,
       new THREE.MeshBasicMaterial({
         vertexColors: true, // 中心→外へグラデーション（頂点アルファ）
         transparent: true,
-        depthTest: true, // 地形に正しく隠れる（地中は見えず、山は中に収まる）
+        depthTest: true, // 地形に正しく隠れる（地面に貼り付いて見える）
         depthWrite: false,
         side: THREE.DoubleSide,
+        polygonOffset: true, // 地表との z-fight を避けて手前に寄せる
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
       }),
     );
     viewCone.renderOrder = 998;
     viewCone.frustumCulled = false;
     viewCone.visible = false;
     scene.add(viewCone);
-    // 画角の「中心」と「両端」を、ゾーン上面(highY)に沿う3本の線で描く（中心 h0 / 左端 / 右端）。
-    // 下面には描かない。線色は塗り(面)と同色にして横から見ても浮いた線に見えないようにし、
-    // apex濃い→遠端透明のグラデーションで遠端の硬い線も出さない。
-    // 線分: [apex, 遠端] を3本 = 6頂点（LineSegments は連続2点ごとに1線分）。
-    const viewConeLinePos = new Float32Array(3 * 2 * 3);
+    // 画角の「中心」と「両端」の3本の線も地形に沿わせて apex→遠端 で引く（塗りと同色・同フェード）。
+    // 各本を VC_NR 区間に分割（LineSegments は2点ごとに1線分）。
+    const VC_LINES = 3;
+    const viewConeLinePos = new Float32Array(VC_LINES * VC_NR * 2 * 3);
     const viewConeLineGeom = new THREE.BufferGeometry();
     viewConeLineGeom.setAttribute("position", new THREE.BufferAttribute(viewConeLinePos, 3));
     {
-      const cr = 0.37; // 塗り(viewCone)と同色
-      const cg = 0.63;
-      const cb = 0.9;
-      const apexA = 0.42; // 中心面と同じ濃さ（色も同じ）
-      const col = new Float32Array(3 * 2 * 4);
-      for (let k = 0; k < 3; k++) {
-        const a0 = (k * 2) * 4; // apex頂点
-        const a1 = (k * 2 + 1) * 4; // 遠端頂点
-        col[a0] = cr; col[a0 + 1] = cg; col[a0 + 2] = cb; col[a0 + 3] = apexA;
-        col[a1] = cr; col[a1 + 1] = cg; col[a1 + 2] = cb; col[a1 + 3] = 0;
+      const col = new Float32Array(VC_LINES * VC_NR * 2 * 4);
+      const lineAlpha = (t: number) => VC_LINE_ALPHA * (1 - t);
+      for (let k = 0; k < VC_LINES; k++) {
+        for (let s = 0; s < VC_NR; s++) {
+          const base = (k * VC_NR + s) * 2;
+          const oA = base * 4, oB = (base + 1) * 4;
+          col[oA] = VC_COL.r; col[oA + 1] = VC_COL.g; col[oA + 2] = VC_COL.b; col[oA + 3] = lineAlpha(s / VC_NR);
+          col[oB] = VC_COL.r; col[oB + 1] = VC_COL.g; col[oB + 2] = VC_COL.b; col[oB + 3] = lineAlpha((s + 1) / VC_NR);
+        }
       }
       viewConeLineGeom.setAttribute("color", new THREE.BufferAttribute(col, 4));
     }
     const viewConePlanes = new THREE.LineSegments(
       viewConeLineGeom,
-      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false }),
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthTest: true, // 線も地形に隠れる（地面に沿う）
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      }),
     );
     viewConePlanes.renderOrder = 999;
     viewConePlanes.frustumCulled = false;
     viewConePlanes.visible = false;
     scene.add(viewConePlanes);
-    // 画角の中心「面」（撮影地点から中心方向へ伸びる垂直の面）。中心線と合わせて中心を示す。
-    // 頂点: 0=apex下, 1=apex上, 2=遠端下, 3=遠端上。apex濃い→遠端透明のグラデーション。
-    const viewConeCenterPos = new Float32Array(4 * 3);
-    const viewConeCenterGeom = new THREE.BufferGeometry();
-    viewConeCenterGeom.setAttribute("position", new THREE.BufferAttribute(viewConeCenterPos, 3));
-    {
-      const cr = 0.37; // 塗りと同色
-      const cg = 0.63;
-      const cb = 0.9;
-      const a = 0.42;
-      const col = new Float32Array([cr, cg, cb, a, cr, cg, cb, a, cr, cg, cb, 0, cr, cg, cb, 0]);
-      viewConeCenterGeom.setAttribute("color", new THREE.BufferAttribute(col, 4));
-    }
-    viewConeCenterGeom.setIndex([0, 2, 3, 0, 3, 1]);
-    const viewConeCenter = new THREE.Mesh(
-      viewConeCenterGeom,
-      new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        depthTest: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
-    viewConeCenter.renderOrder = 998;
-    viewConeCenter.frustumCulled = false;
-    viewConeCenter.visible = false;
-    scene.add(viewConeCenter);
-    // 視野ゾーンを撮影地点・方向・画角に合わせて作り直す。
-    const updateViewCone = (ex: number, ez: number, headingDeg: number, fovDeg: number, flat: boolean) => {
-      // 2D(flat): 撮影地点の地表に沿わせ、深度テスト無効で地形に隠れない「地図上の注記」として描く。
-      //   高所の面だと、寄った時にカメラが面の下へ潜って扇が消えたり、山に隠れて見えなくなる。
-      //   地表に置き＋depthTest無効にすれば、ズームや山に関係なく線＋面が常に地図上に見える。
-      // 3D: 上端(VC_TOP_M)〜下端(VC_BOT_M)の立体プリズム（地形に正しく隠れる）。
-      const groundY = sampleSurfaceY(ex, ez);
-      const highY = flat ? groundY : elevToWorldY(VC_TOP_M);
-      const lowY = flat ? groundY : elevToWorldY(VC_BOT_M);
-      (viewCone.material as THREE.MeshBasicMaterial).depthTest = !flat; // 2Dは常に地図の上に重ねる
+    // 視野コーンを撮影地点・方向・画角に合わせて作り直す（地形に沿わせて貼る）。
+    const updateViewCone = (ex: number, ez: number, headingDeg: number, fovDeg: number) => {
       const half = (Math.min(Math.max(fovDeg, 1), 175) / 2) * (Math.PI / 180);
       const h0 = (headingDeg * Math.PI) / 180;
       // 長さはズーム連動だが、方向が分かるよう遠くまで伸ばす（塗りは途中で透過するので長くてOK）。
       const R = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * 2.2, 40, VIEWCONE_R);
-      const setV = (vi: number, x: number, y: number, z: number) => {
-        const o = vi * 3;
-        viewConePos[o] = x;
-        viewConePos[o + 1] = y;
-        viewConePos[o + 2] = z;
-      };
-      setV(vcBotApex, ex, lowY, ez);
-      setV(vcTopApex, ex, highY, ez);
+      // 塗りグリッドを地表へドレープ。apex(r=0)は1点なので1回だけサンプリングして全列に複製。
+      const apexY = sampleSurfaceY(ex, ez) + vcLift;
       for (let i = 0; i <= VC_N; i++) {
-        const a = h0 - half + (2 * half * i) / VC_N; // 方位角（0=北=-Z）
-        const x = ex + R * Math.sin(a);
-        const z = ez - R * Math.cos(a);
-        setV(vcBotArc(i), x, lowY, z);
-        setV(vcTopArc(i), x, highY, z);
+        const o = gv(0, i) * 3;
+        viewConePos[o] = ex; viewConePos[o + 1] = apexY; viewConePos[o + 2] = ez;
       }
-      // 中心＋両端の3本の線を、ゾーン上面(highY)に沿って apex→遠端 で引く（下面には描かない）。
-      const lineAngles = [h0, h0 - half, h0 + half];
-      for (let k = 0; k < lineAngles.length; k++) {
-        const th = lineAngles[k];
-        const fx = ex + R * Math.sin(th);
-        const fz = ez - R * Math.cos(th);
-        const b = k * 6; // 2頂点 × 3成分
-        viewConeLinePos[b] = ex; // apex（上面）
-        viewConeLinePos[b + 1] = highY;
-        viewConeLinePos[b + 2] = ez;
-        viewConeLinePos[b + 3] = fx; // 遠端（上面）
-        viewConeLinePos[b + 4] = highY;
-        viewConeLinePos[b + 5] = fz;
+      for (let r = 1; r <= VC_NR; r++) {
+        const frac = r / VC_NR;
+        const radius = R * frac * frac; // apex付近を密に（見える中心側ほど地形に細かく追従）
+        for (let i = 0; i <= VC_N; i++) {
+          const a = h0 - half + (2 * half * i) / VC_N; // 方位角（0=北=-Z）
+          const x = ex + radius * Math.sin(a);
+          const z = ez - radius * Math.cos(a);
+          const o = gv(r, i) * 3;
+          viewConePos[o] = x;
+          viewConePos[o + 1] = sampleSurfaceY(x, z) + vcLift;
+          viewConePos[o + 2] = z;
+        }
       }
-      // 中心面（中心方向 h0 へ R まで伸びる垂直の面）。
-      const cfx = ex + R * Math.sin(h0);
-      const cfz = ez - R * Math.cos(h0);
-      viewConeCenterPos.set([ex, lowY, ez, ex, highY, ez, cfx, lowY, cfz, cfx, highY, cfz]);
-      viewConeCenterGeom.attributes.position.needsUpdate = true;
+      // 3本の線は塗りグリッドの列から取り出す（追加レイキャスト無し）。中心=中央列 / 左=0 / 右=VC_N。
+      const cols = [VC_N >> 1, 0, VC_N];
+      for (let k = 0; k < VC_LINES; k++) {
+        const iCol = cols[k];
+        for (let s = 0; s < VC_NR; s++) {
+          const gA = gv(s, iCol) * 3;
+          const gB = gv(s + 1, iCol) * 3;
+          const base = (k * VC_NR + s) * 2 * 3;
+          viewConeLinePos[base] = viewConePos[gA];
+          viewConeLinePos[base + 1] = viewConePos[gA + 1] + (vcLineLift - vcLift);
+          viewConeLinePos[base + 2] = viewConePos[gA + 2];
+          viewConeLinePos[base + 3] = viewConePos[gB];
+          viewConeLinePos[base + 4] = viewConePos[gB + 1] + (vcLineLift - vcLift);
+          viewConeLinePos[base + 5] = viewConePos[gB + 2];
+        }
+      }
       viewConeLineGeom.attributes.position.needsUpdate = true;
       viewConeGeom.attributes.position.needsUpdate = true;
       viewConeGeom.computeBoundingSphere();
       viewConeLineGeom.computeBoundingSphere();
-      viewConeCenterGeom.computeBoundingSphere();
       viewCone.visible = true;
       viewConePlanes.visible = true;
-      viewConeCenter.visible = !flat; // 2Dでは中心の垂直面は出さない（上面の情報だけ）
     };
 
     const getCenter = (): LonLat | null => {
@@ -832,13 +796,12 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           }
         }
       },
-      setViewCone: (lon, lat, headingDeg, fovDeg, flat) => {
-        updateViewCone(mercXToWorld(lonToMercX(lon)), mercYToWorld(latToMercY(lat)), headingDeg, fovDeg, flat);
+      setViewCone: (lon, lat, headingDeg, fovDeg) => {
+        updateViewCone(mercXToWorld(lonToMercX(lon)), mercYToWorld(latToMercY(lat)), headingDeg, fovDeg);
       },
       hideViewCone: () => {
         viewCone.visible = false;
         viewConePlanes.visible = false;
-        viewConeCenter.visible = false;
       },
       // 書き出し用: 選択中の山頂を写真フレーム内の正規化座標(u,v ∈ 0..1)で返す。
       // AR微調整中はカメラが写真アスペクトで投影しているため、NDC がそのまま写真の位置になる。
@@ -1206,8 +1169,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       (viewCone.material as THREE.Material).dispose();
       viewConePlanes.geometry.dispose();
       (viewConePlanes.material as THREE.Material).dispose();
-      viewConeCenter.geometry.dispose();
-      (viewConeCenter.material as THREE.Material).dispose();
       celestial.dispose();
       skyDome.dispose();
       peaks.dispose();
@@ -1296,14 +1257,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     img.src = photoUrl;
   }, [photoUrl]);
 
-  // 向き決め(②)・山選択(③)の俯瞰中、視野コーンを地図上に描画（写る方向の山を選びやすく）。
+  // 向き決め(②)・山選択(③)の俯瞰中、視野コーンを地図に描画（写る方向の山を選びやすく）。
+  // 地形にドレープするので2D/3D共通の見た目。dimは関与しない。
   useEffect(() => {
     if (arLike && (arStep === "params" || arStep === "select") && arLoc) {
-      apiRef.current?.setViewCone(arLoc.lon, arLoc.lat, arHeadingDeg ?? 0, arFovDeg, map2D);
+      apiRef.current?.setViewCone(arLoc.lon, arLoc.lat, arHeadingDeg ?? 0, arFovDeg);
     } else {
       apiRef.current?.hideViewCone();
     }
-  }, [arLike, arStep, arLoc, arHeadingDeg, arFovDeg, map2D]);
+  }, [arLike, arStep, arLoc, arHeadingDeg, arFovDeg]);
 
   // 初回起動: 現在地が取れればそこへ移動し、ホームの基準にする。取れなければ日本全体ビューのまま。
   // ライブARは別途 startLiveLocate で現在地→撮影地点に置くのでここはスキップ。
