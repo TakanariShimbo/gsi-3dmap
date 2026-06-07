@@ -227,12 +227,6 @@ body,
 .cam-photo-pick:hover {
   background: rgba(79, 134, 198, 0.34);
 }
-.cam-photo-ctrl {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  width: 100%;
-}
 .cam-photo-opacity {
   display: flex;
   flex-direction: column;
@@ -244,19 +238,6 @@ body,
 .cam-photo-opacity input[type="range"] {
   width: 100%;
   accent-color: #4f86c6;
-}
-.cam-photo-clear {
-  padding: 5px 10px;
-  font-size: 12px;
-  color: #e6edf5;
-  background: rgba(40, 48, 60, 0.7);
-  border: 1px solid rgba(130, 150, 175, 0.3);
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.cam-photo-clear:hover {
-  background: rgba(60, 70, 86, 0.8);
 }
 
 /* ホームへ戻る（左上・メニューの右） */

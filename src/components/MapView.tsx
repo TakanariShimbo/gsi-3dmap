@@ -2290,21 +2290,16 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
                   <span>写真を重ねて合わせる</span>
                 </button>
               ) : (
-                <div className="cam-photo-ctrl">
-                  <label className="cam-photo-opacity">
-                    <span>写真の不透明度 {Math.round(photoOpacity * 100)}%</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={Math.round(photoOpacity * 100)}
-                      onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)}
-                    />
-                  </label>
-                  <button className="cam-photo-clear" title="別の写真でやり直す" onClick={restartAr}>
-                    別の写真
-                  </button>
-                </div>
+                <label className="cam-photo-opacity">
+                  <span>写真の不透明度 {Math.round(photoOpacity * 100)}%</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(photoOpacity * 100)}
+                    onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)}
+                  />
+                </label>
               )}
             </div>
           )}
