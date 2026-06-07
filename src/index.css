@@ -1238,26 +1238,18 @@ body,
   width: 100%;
 }
 
-/* ⑤ 出力(仕上げ): 写真の上で名札・点をドラッグ編集する全画面 */
+/* ⑤ 出力(仕上げ): 写真の上で名札・点をドラッグ編集。背景でキャンバス/山名ラベルを隠す。 */
 .ar-edit {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 52px 12px 12px; /* 上は進行表示の分を空ける */
   background: #06080c;
   z-index: 22;
 }
+/* 編集ステージは微調整(④)と同じ枠(arStageRect)に合わせるため、left/top/width/height は
+   render loop が px で設定する（CSSでのサイズ指定はしない）。 */
 .ar-edit-stage {
-  position: relative;
-  /* --ar(写真のW/H)とaspect-ratioはinlineで指定。高さは縦・横どちらの制約でも収まる値に。 */
-  height: min(calc(100vh - 52px - 84px), calc((100vw - 24px) / var(--ar, 1.5)));
+  position: absolute;
   background: #000;
-  border: 1px solid rgba(130, 150, 175, 0.3);
-  border-radius: 8px;
   overflow: hidden;
   touch-action: none;
 }
@@ -1316,27 +1308,6 @@ body,
 .ar-edit-label:active {
   cursor: grabbing;
 }
-/* 出力(仕上げ)の下部: 案内を上の行に、ボタンを下の行に（間に挟まず窮屈にしない） */
-.ar-edit-foot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: min(560px, calc(100vw - 24px));
-}
-.ar-edit-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  justify-content: space-between;
-}
-.ar-edit-hint {
-  font-size: 12px;
-  color: #aebccf;
-  text-align: center;
-}
-
 /* 山選択フェーズ: 決定バー内の選択数 */
 .ar-select-count {
   display: inline-flex;

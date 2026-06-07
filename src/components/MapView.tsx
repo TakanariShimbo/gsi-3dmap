@@ -201,7 +201,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const [arLoc, setArLoc] = useState<{ lat: number; lon: number } | null>(null); // 撮影地点
   const [arHeadingDeg, setArHeadingDeg] = useState<number | null>(null); // 撮影方位（EXIF or ②で設定）
   const [arFovDeg, setArFovDeg] = useState(CAM_FOV_DEFAULT); // 横画角（EXIF or ②で設定）
-  const [arPhotoAspect, setArPhotoAspect] = useState<number | null>(null); // 仕上げ画面の枠アスペクト用
   // 出力(仕上げ)で編集する各山ラベル。座標は写真フレーム内の正規化値(0..1)。
   const [arLabels, setArLabels] = useState<ArLabel[]>([]);
   const arStepRef = useRef<ArStep>(appMode === "live" ? "locate" : "upload"); // ループから参照
@@ -902,6 +901,14 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             s.width = `${stageRect.w}px`;
             s.height = `${stageRect.h}px`;
           }
+          // ⑤出力(仕上げ)の編集ステージも同じ枠に合わせる（微調整と表示を一致）。
+          if (arStepRef.current === "export" && arEditStageRef.current) {
+            const s = arEditStageRef.current.style;
+            s.left = `${stageRect.x}px`;
+            s.top = `${stageRect.y}px`;
+            s.width = `${stageRect.w}px`;
+            s.height = `${stageRect.h}px`;
+          }
         }
         if (reticleRef.current) reticleRef.current.style.display = "none";
         // 太陽・月：カメラ視点では切り抜かず、視点(目)を中心に遠方の空へ配置。
@@ -1123,7 +1130,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     img.onload = () => {
       const a = img.naturalWidth / Math.max(1, img.naturalHeight);
       arPhotoAspectRef.current = a;
-      setArPhotoAspect(a);
     };
     img.src = photoUrl;
   }, [photoUrl]);
@@ -1769,7 +1775,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             if (v.videoWidth && v.videoHeight) {
               const a = v.videoWidth / v.videoHeight;
               arPhotoAspectRef.current = a;
-              setArPhotoAspect(a);
             }
           }}
         />
@@ -1960,19 +1965,12 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </div>
       )}
 
-      {/* ⑤ 出力(仕上げ): 写真に名札・点を重ね、ドラッグで微調整してからダウンロード */}
+      {/* ⑤ 出力(仕上げ): 写真に名札・点を重ね、ドラッグで微調整してからダウンロード。
+          画像枠は微調整(④)と同じ arStageRect で配置（render loop が left/top/w/h を設定）。
+          パネルは①〜④と同じ統一シェル（グリップ＝ステップ＋折り畳み、本体＝ヒント＋操作）。 */}
       {appMode === "ar" && arStep === "export" && (
         <div className="ar-edit">
-          <div
-            className="ar-edit-stage"
-            ref={arEditStageRef}
-            style={
-              {
-                aspectRatio: String(arPhotoAspect ?? 1.5),
-                "--ar": String(arPhotoAspect ?? 1.5),
-              } as React.CSSProperties
-            }
-          >
+          <div className="ar-edit-stage" ref={arEditStageRef}>
             {photoUrl && <img className="ar-edit-photo" src={photoUrl} alt="" draggable={false} />}
             {/* 引き出し線（名札→点） */}
             <svg className="ar-edit-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -2010,31 +2008,41 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               </div>
             ))}
           </div>
-          <div className="ar-edit-foot">
-            {arStepsBar}
-            <span className="ar-edit-hint">
-              {arLabels.length > 0
-                ? `名札や点をドラッグで位置を微調整（${arLabels.length}件）`
-                : "写真の枠内に山がありません。微調整で向きを合わせ直してください"}
-            </span>
-            <div className="ar-dock-actions">
+          <div className="cam-hud" ref={arHudRef}>
+            <div className="cam-hud-grip">
+              {arStepsBar}
               <button
-                className="ar-btn-sub ar-btn--icon"
-                title="微調整へ戻る"
-                aria-label="微調整へ戻る"
-                onClick={backToAlignFromExport}
+                className="ar-panel-toggle"
+                title={arPanelOpen ? "畳む（写真を大きく）" : "開く"}
+                aria-label={arPanelOpen ? "畳む" : "開く"}
+                onClick={() => setArPanelOpen((o) => !o)}
               >
-                <IconChevron dir="left" size={18} />
-              </button>
-              <button
-                className="ar-btn-main"
-                disabled={arLabels.length === 0}
-                onClick={downloadComposite}
-              >
-                <IconDownload size={15} />
-                ダウンロード
+                <IconCaret dir={arPanelOpen ? "down" : "up"} size={16} />
               </button>
             </div>
+            {arPanelOpen && (
+              <>
+                <span className="cam-hint">
+                  {arLabels.length > 0
+                    ? `名札や点をドラッグで位置を微調整（${arLabels.length}件）`
+                    : "写真の枠内に山がありません。微調整で向きを合わせ直してください"}
+                </span>
+                <div className="ar-dock-actions">
+                  <button
+                    className="ar-btn-sub ar-btn--icon"
+                    title="微調整へ戻る"
+                    aria-label="微調整へ戻る"
+                    onClick={backToAlignFromExport}
+                  >
+                    <IconChevron dir="left" size={18} />
+                  </button>
+                  <button className="ar-btn-main" disabled={arLabels.length === 0} onClick={downloadComposite}>
+                    <IconDownload size={15} />
+                    ダウンロード
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
