@@ -518,7 +518,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       const cr = 0.37; // 塗り(viewCone)と同色
       const cg = 0.63;
       const cb = 0.9;
-      const apexA = 0.6;
+      const apexA = 0.42; // 中心面と同じ濃さ（色も同じ）
       const col = new Float32Array(3 * 2 * 4);
       for (let k = 0; k < 3; k++) {
         const a0 = (k * 2) * 4; // apex頂点
