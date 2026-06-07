@@ -217,7 +217,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // AR下部パネルの折りたたみ/移動（縦画像や地図を見やすくするため）。
   const [arPanelOpen, setArPanelOpen] = useState(true); // 折りたたみ（false=畳む）
   const [arDockOffset, setArDockOffset] = useState({ x: 0, y: 0 }); // ドックのドラッグ移動量(px)
-  const arDockDragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
   // --- ライブAR（カメラでその場AR）専用 --- //
   const liveVideoRef = useRef<HTMLVideoElement | null>(null); // 背面カメラのライブ映像
   const liveStreamRef = useRef<MediaStream | null>(null); // 取得中のカメラストリーム（解放用）
@@ -435,9 +434,24 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         h = H;
         w = h * aspect;
       }
-      const panelTop = H - ((arHudRef.current?.offsetHeight ?? 150) + 32); // 下パネルの上端(余白込み)
       let y = (H - h) / 2; // 基本は全高で中央
-      if (y + h > panelTop) y = Math.max(0, panelTop - h); // 重なるなら上へ寄せ、収まらなければ上端
+      // パネルと重なる場合、パネルの「実際の位置」(ドラッグ移動込み)を見て、
+      // パネルが画面の下半分なら写真を上へ、上半分なら下へ逃がす（重なる側と反対へ）。
+      const hud = arHudRef.current;
+      if (hud) {
+        const pr = hud.getBoundingClientRect(); // transform(ドラッグ)反映済みの実位置
+        const m = mount.getBoundingClientRect();
+        const pTop = pr.top - m.top;
+        const pBottom = pr.bottom - m.top;
+        const gap = 8;
+        if ((pTop + pBottom) / 2 < H / 2) {
+          // パネルが上寄り → 写真は下へ逃げる（上端をパネル下端より下に。収まらなければ下端寄せ）
+          if (y < pBottom + gap) y = Math.min(H - h, pBottom + gap);
+        } else {
+          // パネルが下寄り → 写真は上へ逃げる（下端をパネル上端より上に。収まらなければ上端寄せ）
+          if (y + h > pTop - gap) y = Math.max(0, pTop - gap - h);
+        }
+      }
       return { x: (W - w) / 2, y, w, h };
     };
     // AR微調整/書き出しで写真枠に合わせて描画するか。
@@ -1701,20 +1715,26 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
 
   // AR下部パネル: つかんで移動。フェーズが変わったら開いて中央に戻す。
+  // move/up は window で拾う（pointer capture や重なり=stacking context に左右されず確実に動く）。
   const onDockGripDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return; // ボタン操作は移動にしない
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    arDockDragRef.current = { px: e.clientX, py: e.clientY, ox: arDockOffset.x, oy: arDockOffset.y };
-  };
-  const onDockGripMove = (e: React.PointerEvent) => {
-    const d = arDockDragRef.current;
-    if (!d) return;
-    const x = Math.max(-window.innerWidth / 2 + 60, Math.min(window.innerWidth / 2 - 60, d.ox + (e.clientX - d.px)));
-    const y = Math.max(-(window.innerHeight - 180), Math.min(0, d.oy + (e.clientY - d.py)));
-    setArDockOffset({ x, y });
-  };
-  const onDockGripUp = () => {
-    arDockDragRef.current = null;
+    const px = e.clientX;
+    const py = e.clientY;
+    const ox = arDockOffset.x;
+    const oy = arDockOffset.y;
+    const move = (ev: PointerEvent) => {
+      const x = Math.max(-window.innerWidth / 2 + 60, Math.min(window.innerWidth / 2 - 60, ox + (ev.clientX - px)));
+      const y = Math.max(-(window.innerHeight - 180), Math.min(0, oy + (ev.clientY - py)));
+      setArDockOffset({ x, y });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   // AR/ライブの進行表示（1〜5）。ドック・カメラHUD・出力編集の各下部パネルで使い回す。
@@ -1823,9 +1843,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           <div
             className="ar-panel-grip"
             onPointerDown={onDockGripDown}
-            onPointerMove={onDockGripMove}
-            onPointerUp={onDockGripUp}
-            onPointerCancel={onDockGripUp}
           >
             {arStepsBar}
             <button
@@ -2008,8 +2025,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               </div>
             ))}
           </div>
-          <div className="cam-hud" ref={arHudRef}>
-            <div className="cam-hud-grip">
+          <div
+            className="cam-hud"
+            ref={arHudRef}
+            style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
+          >
+            <div
+              className="cam-hud-grip ar-panel-grip"
+              onPointerDown={onDockGripDown}
+            >
               {arStepsBar}
               <button
                 className="ar-panel-toggle"
@@ -2148,8 +2172,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
 
       {/* カメラ視点モードのHUD（下）。AR書き出し中は隠す（合成パネルを前面に）。 */}
       {mode === "camera" && !(appMode === "ar" && arStep === "export") && (
-        <div className="cam-hud" ref={arHudRef}>
-          <div className="cam-hud-grip">
+        <div
+          className="cam-hud"
+          ref={arHudRef}
+          style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
+        >
+          <div
+            className="cam-hud-grip ar-panel-grip"
+            onPointerDown={onDockGripDown}
+          >
             {arStepsBar}
             <button
               className="ar-panel-toggle"
