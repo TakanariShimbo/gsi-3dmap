@@ -1217,15 +1217,18 @@ body,
 }
 
 /* 撮影地点ピン（地表に追従。下端が地点を指す） */
-/* 撮影地点ターゲット。中心レティクルと同じく「点に中心」を合わせて接地表示（浮かせない）。 */
-.ar-target {
+/* 撮影地点ピン。先端（アイコン高さの約87.5%の位置）を撮影地点に合わせて接地。
+   sampleSurfaceY が表示面に一致するよう修正済みなので、先端基準でも浮かない。 */
+.ar-pin {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -87.5%);
+  color: #ff5a3c;
   pointer-events: none;
-  opacity: 0.95;
-  /* どんな地形色の上でも視認できるよう薄い暗縁を付ける。 */
-  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
   z-index: 6;
+}
+.ar-pin svg {
+  display: block; /* インラインSVGの下余白を消し、要素高さ＝アイコン高さにする */
 }
 
 /* 下部の決定バー（地点/情報フェーズ共通） */
