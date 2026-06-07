@@ -210,7 +210,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const [arLabels, setArLabels] = useState<ArLabel[]>([]);
   const arStepRef = useRef<ArStep>("upload"); // ループから参照
   const arPinXZRef = useRef<{ x: number; z: number } | null>(null); // 撮影地点ピンのワールドXZ
-  const arPinElRef = useRef<HTMLDivElement | null>(null); // 撮影地点ピンのDOM
+  const arPinElRef = useRef<SVGSVGElement | null>(null); // 撮影地点ターゲット（reticle方式で接地）のDOM
   const arPhotoAspectRef = useRef<number | null>(null); // 撮影写真の縦横比(W/H)。3D枠の整形に使う
   const arPhotoElRef = useRef<HTMLImageElement | null>(null); // 写真オーバーレイのDOM（枠に追従）
   const arHudRef = useRef<HTMLDivElement | null>(null); // カメラHUD（下部パネル）。枠の予約高さ算出に使う
@@ -1777,12 +1777,25 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </div>
       )}
 
-      {/* 撮影地点ピン（AR地図フェーズ：地点/向き決め/山選択で表示。位置はループが追従） */}
+      {/* 撮影地点ターゲット（AR地図フェーズ：地点/向き決め/山選択で表示。位置はループが追従）。
+          シミュレーションの中心レティクルと同じ「点に中心」方式で接地させ、浮かせない。 */}
       {appMode === "ar" && mode === "map" && (
-        <div ref={arPinElRef} className="ar-pin" style={{ display: "none" }}>
-          <span className="ar-pin-dot" />
-          <IconPin className="ar-pin-icon" size={30} />
-        </div>
+        <svg
+          ref={arPinElRef}
+          className="ar-target"
+          viewBox="0 0 32 32"
+          width="30"
+          height="30"
+          aria-hidden="true"
+          style={{ display: "none" }}
+        >
+          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#ff7a4d" strokeWidth="1.8" />
+          <circle cx="16" cy="16" r="2" fill="#ff7a4d" />
+          <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#ff7a4d" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="16" y1="25.5" x2="16" y2="29.5" stroke="#ff7a4d" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="2.5" y1="16" x2="6.5" y2="16" stroke="#ff7a4d" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="25.5" y1="16" x2="29.5" y2="16" stroke="#ff7a4d" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
       )}
 
       {/* ② 撮影地点フェーズ: 案内＋ピン＋決定バー */}
