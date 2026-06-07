@@ -2170,6 +2170,17 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             <IconEye size={18} />
           </button>
         )}
+        {/* AR/ライブ: 決めた地点へ視点を戻す（アイコンのみ） */}
+        {arLike && arLoc && mode === "map" && (
+          <button
+            className="topbar-btn"
+            title={appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}
+            aria-label={appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}
+            onClick={recenterAr}
+          >
+            <IconPin size={18} />
+          </button>
+        )}
       </div>
       {locError && mode === "map" && <div className="locate-warn">{locError}</div>}
 
@@ -2629,15 +2640,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </section>
       </aside>
 
-      {/* 右下: AR/ライブで「決めた地点へ視点を戻す」ボタンのみ。 */}
-      {mode === "map" && arLike && arLoc && (
-        <div className="controls-br">
-          <button className="freelook-toggle" title="決めた地点へ視点を戻す" onClick={recenterAr}>
-            <IconPin size={14} />
-            <span>{appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}</span>
-          </button>
-        </div>
-      )}
 
       <div className="attribution">
         出典:{" "}
