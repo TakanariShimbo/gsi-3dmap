@@ -235,6 +235,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const liveOriUnsubRef = useRef<(() => void) | null>(null); // 方位センサ購読の解除
   const [liveCompassDeg, setLiveCompassDeg] = useState<number | null>(null); // コンパス方位の生値
   const [liveStatus, setLiveStatus] = useState<string | null>(null); // GPS/センサ/カメラの状態メッセージ
+  // 方位センサ追従のON/OFF。ONで②の向きがコンパスに追従、OFFで固定（手動で微調整可）。
+  const [liveFollow, setLiveFollow] = useState(true);
   // サイドバー各セクションの開閉（よく使う検索・地図は既定で開く）。
   const [openSec, setOpenSec] = useState<Record<string, boolean>>({
     search: true,
@@ -949,6 +951,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       }
       // AR向き決めフェーズ: タップした方向に撮影方向を向ける。
       if (arStepRef.current === "params") {
+        if (appModeRef.current === "live") setLiveFollow(false); // 手動タップ=方位センサ追従を止めて固定
         aimAtScreen(e.clientX, e.clientY);
         return;
       }
@@ -1540,6 +1543,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     setArHeadingDeg(null);
     setArFovDeg(CAM_FOV_DEFAULT);
     changeCamRoll(0);
+    setLiveFollow(true);
     setArStep("locate");
     startLiveLocate();
   };
@@ -1555,8 +1559,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // ライブAR 向き決め(②): 端末の方位センサで撮影方向を追従（スマホを水平にして向ける）。
+  // liveFollow=OFF（固定）の間は購読しない＝コンパスが暴れず、手動の向きを保てる。
   useEffect(() => {
-    if (appMode !== "live" || arStep !== "params") return;
+    if (appMode !== "live" || arStep !== "params" || !liveFollow) return;
     const unsub = subscribeOrientation((r) => {
       if (r.headingDeg == null) return;
       setLiveCompassDeg(r.headingDeg);
@@ -1571,7 +1576,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       unsub();
       liveOriUnsubRef.current = null;
     };
-  }, [appMode, arStep]);
+  }, [appMode, arStep, liveFollow]);
   // 「合わせる」フェーズへ: 撮影地点に着地し、向き・画角を初期化。
   const goAlign = (loc: { lat: number; lon: number }, headingDeg: number | null, fovDeg: number) => {
     setArStep("align");
@@ -1606,7 +1611,10 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // 撮影地点フェーズの「ここで決定」: 向きと画角をざっくり決めるフェーズへ（常に）。
   const confirmArLocate = () => {
     if (!arLoc) return;
-    if (appMode === "live") requestOrientationPermission(); // iOS等の方位センサ許可（ユーザー操作起点）
+    if (appMode === "live") {
+      requestOrientationPermission(); // iOS等の方位センサ許可（ユーザー操作起点）
+      setLiveFollow(true); // ②に入る時は方位センサ追従ONから（その後タップ/ボタンで固定）
+    }
     apiRef.current?.frameAimView(arLoc.lon, arLoc.lat); // 撮影地点中心の北上俯瞰へ
     apiRef.current?.setControlMode("map"); // パン/回転/ズーム可。方向はタップで指定
     setArStep("params");
@@ -1625,6 +1633,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // 山選択(③)→ 向き・画角(②)へ戻る。俯瞰のまま向き決め(コーン)へ。
   const backToParams = () => {
     if (!arLoc) return;
+    if (appMode === "live") setLiveFollow(true); // ②へ戻る時は追従ONから
     apiRef.current?.frameAimView(arLoc.lon, arLoc.lat);
     apiRef.current?.setControlMode("map");
     setArStep("params");
@@ -2026,9 +2035,11 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             <IconPin size={15} />
             <span>
               {appMode === "live"
-                ? `スマホを地面と水平にして見たい方へ向けてください（方位センサで追従${
-                    liveCompassDeg == null ? "／取得待ち…" : ""
-                  }）。スライダーで画角を調整。`
+                ? liveFollow
+                  ? `スマホを地面と水平にして見たい方へ向けてください（方位センサで追従${
+                      liveCompassDeg == null ? "／取得待ち…" : "中"
+                    }）。地図タップ or 下のボタンで固定して微調整できます。`
+                  : "固定中です。地図をタップして向きを微調整、または下のボタンで方位センサに戻せます。スライダーで画角を調整。"
                 : "地図をタップして撮影方向を指します。スライダーで画角（写る範囲）を調整。"}
             </span>
           </div>
@@ -2037,6 +2048,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               <span>方向 {compass(arHeadingDeg ?? 0)} {Math.round(arHeadingDeg ?? 0)}°</span>
               <span>横画角 {Math.round(arFovDeg)}°</span>
             </div>
+            {appMode === "live" && (
+              <button
+                className={`ar-follow-toggle${liveFollow ? " is-on" : ""}`}
+                onClick={() => setLiveFollow((v) => !v)}
+              >
+                <IconLocate size={14} />
+                {liveFollow ? "方位センサーで追従中（タップで固定）" : "固定中（タップで方位センサーに戻す）"}
+              </button>
+            )}
             <label className="ar-fov">
               <span>画角（望遠 ←→ 広角）</span>
               <input
