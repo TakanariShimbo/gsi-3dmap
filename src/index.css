@@ -997,23 +997,60 @@ body,
 }
 
 /* --- ARウィザード（地点 → 情報 → 合わせる） --- */
-/* 進行表示（上中央） */
-.ar-steps {
+/* AR下部ドック: 進行表示＋アナウンス＋操作を1つにまとめた下部パネル */
+.ar-dock {
   position: absolute;
-  top: max(8px, env(safe-area-inset-top, 8px));
   left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom, 12px));
   transform: translateX(-50%);
+  width: min(460px, calc(100vw - 24px));
   display: flex;
-  flex-wrap: nowrap; /* 折り返して縦長にならないように */
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.92);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 22;
+}
+/* 進行表示（各下部パネルの上段に静的に並べる） */
+.ar-steps {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
   gap: 8px;
-  max-width: calc(100vw - 16px);
-  padding: 6px 10px;
-  background: rgba(14, 19, 27, 0.82);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 10px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 23; /* 出力(仕上げ)の全画面オーバーレイ(z22)より前面に出す */
+  max-width: 100%;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(130, 150, 175, 0.18);
+}
+/* ドック内のアナウンス文 */
+.ar-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #eaf2fb;
+}
+.ar-hint > svg {
+  flex: none;
+  margin-top: 1px;
+  opacity: 0.85;
+}
+/* 進む/戻る等のボタン行 */
+.ar-dock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+/* アイコンのみのナビボタン（進む/戻る）を正方形寄りに */
+.ar-btn--icon {
+  padding: 10px 12px;
+  justify-content: center;
 }
 .ar-step {
   display: inline-flex;
@@ -1062,32 +1099,6 @@ body,
   }
 }
 
-/* 撮影地点フェーズの案内（進行表示の下） */
-.ar-locate-hint {
-  position: absolute;
-  top: calc(max(8px, env(safe-area-inset-top, 8px)) + 42px);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(520px, calc(100vw - 24px));
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: #eaf2fb;
-  background: rgba(14, 19, 27, 0.82);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 10px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 20;
-}
-.ar-locate-hint > svg {
-  flex: 0 0 auto;
-  color: #6cb0ff;
-}
-
 /* 撮影地点ピン（地表に追従。下端が地点を指す） */
 /* 撮影地点ピン。先端（アイコン高さの約87.5%の位置）を撮影地点に合わせて接地。
    sampleSurfaceY が表示面に一致するよう修正済みなので、先端基準でも浮かない。 */
@@ -1103,22 +1114,6 @@ body,
   display: block; /* インラインSVGの下余白を消し、要素高さ＝アイコン高さにする */
 }
 
-/* 下部の決定バー（地点/情報フェーズ共通） */
-.ar-bottom-bar {
-  position: absolute;
-  left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom, 16px));
-  transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
-  z-index: 20;
-}
-.ar-bottom-bar--inline {
-  position: static;
-  transform: none;
-  margin-top: 4px;
-  justify-content: flex-end;
-}
 .ar-btn-main {
   display: inline-flex;
   align-items: center;
@@ -1328,9 +1323,6 @@ body,
   color: #cdd6e2;
   white-space: nowrap;
 }
-.ar-bottom-bar {
-  align-items: center;
-}
 
 /* 向き・画角フェーズ: コンパスダイヤル */
 .compass-dial {
@@ -1405,27 +1397,3 @@ body,
   border-color: #8fd0ff;
 }
 
-/* 向き・画角フェーズ: 下部パネル（視野コーンは3Dマップ上に描画） */
-.ar-aim-bar {
-  position: absolute;
-  left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom, 16px));
-  transform: translateX(-50%);
-  width: min(460px, calc(100vw - 24px));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-  color: #e6edf5;
-  background: rgba(14, 19, 27, 0.9);
-  border: 1px solid rgba(130, 150, 175, 0.28);
-  border-radius: 14px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 20;
-}
-.ar-aim-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-}
