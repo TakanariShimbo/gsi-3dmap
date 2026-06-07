@@ -11,11 +11,7 @@ import {
   IconMountain,
   IconPin,
   IconDownload,
-  IconCaret,
-  IconRotate,
   IconHome,
-  IconPlus,
-  IconMinus,
   IconLocate,
   IconCamera,
   IconMap,
@@ -60,23 +56,6 @@ import {
 
 // 3Dビュー本体。Three.js のセットアップ、地図的なカメラ操作（MapControls＋画面ボタン）、
 // 毎フレームのクアッドツリー更新、そして事前ロード（中心＋半径でオフライン保存）UI を持つ。
-
-// 画面ボタンで保持する操作状態（押している間 1/-1、毎フレーム適用）。
-type Nav = {
-  panX: number;
-  panZ: number;
-  orbit: number;
-  tilt: number;
-  dolly: number;
-  home: boolean;
-};
-type NavNumKey = "panX" | "panZ" | "orbit" | "tilt" | "dolly";
-
-// 1フレームあたりの操作量。
-const PAN_SPEED = 0.015;
-const ORBIT_SPEED = 0.025;
-const TILT_SPEED = 0.022;
-const DOLLY_BASE = 1.04;
 
 // 事前ロードのパラメータ範囲。
 const PREFETCH_Z_MIN = 12;
@@ -139,8 +118,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // ar(写真)と live(カメラ) は、地点→向き→山選択→微調整 の流れを共有する（データ源だけ違う）。
   const arLike = appMode === "ar" || appMode === "live";
   const mountRef = useRef<HTMLDivElement | null>(null);
-  // 画面ボタンとレンダリングループで共有する操作状態（.current は callback/effect 内でのみ触る）。
-  const navRef = useRef<Nav>({ panX: 0, panZ: 0, orbit: 0, tilt: 0, dolly: 0, home: false });
   // effect 内で作る各種カメラ/地形操作を React 側へ橋渡しする。
   const apiRef = useRef<{
     getCenter: () => LonLat | null;
@@ -185,9 +162,8 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false); // 現在地取得中
   const [locError, setLocError] = useState<string | null>(null);
-  // サイドバー開閉と、右下リモコンの表示。
+  // サイドバー開閉。
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showRemote, setShowRemote] = useState(false);
   // 地図(俯瞰)の2D/3D。2D=真上固定の地図、3D=傾けられる地形。カメラ視点には影響しない。
   const [map2D, setMap2D] = useState(false);
   const map2DRef = useRef(false);
@@ -293,7 +269,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    const nav = navRef.current;
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -1033,76 +1008,22 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       setArHeadingDeg((((Math.atan2(dx, -dz) * 180) / Math.PI) + 360) % 360); // 0=北
     };
 
-    // --- 画面ボタンによるカメラ操作（毎フレーム nav を反映） --- //
-    const UP = new THREE.Vector3(0, 1, 0);
-    const initPos = camera.position.clone();
-    const initTarget = controls.target.clone();
+    // --- フライト（flyGoal）の補間。指定地点/2D3D切替などを滑らかに移動。 --- //
     const applyNav = () => {
-      if (flyGoal) {
-        camera.position.lerp(flyGoal.pos, 0.12);
-        controls.target.lerp(flyGoal.target, 0.12);
-        if (
-          camera.position.distanceTo(flyGoal.pos) < 0.5 &&
-          controls.target.distanceTo(flyGoal.target) < 0.5
-        ) {
-          camera.position.copy(flyGoal.pos);
-          controls.target.copy(flyGoal.target);
-          flyGoal = null;
-          if (pending2DLock) {
-            controls.maxPolarAngle = 0.0001; // 2D飛行が終わってから真上に固定
-            pending2DLock = false;
-          }
+      if (!flyGoal) return;
+      camera.position.lerp(flyGoal.pos, 0.12);
+      controls.target.lerp(flyGoal.target, 0.12);
+      if (
+        camera.position.distanceTo(flyGoal.pos) < 0.5 &&
+        controls.target.distanceTo(flyGoal.target) < 0.5
+      ) {
+        camera.position.copy(flyGoal.pos);
+        controls.target.copy(flyGoal.target);
+        flyGoal = null;
+        if (pending2DLock) {
+          controls.maxPolarAngle = 0.0001; // 2D飛行が終わってから真上に固定
+          pending2DLock = false;
         }
-        return;
-      }
-      if (nav.home) {
-        camera.position.lerp(initPos, 0.15);
-        controls.target.lerp(initTarget, 0.15);
-        if (camera.position.distanceTo(initPos) < 1 && controls.target.distanceTo(initTarget) < 1) {
-          camera.position.copy(initPos);
-          controls.target.copy(initTarget);
-          nav.home = false;
-        }
-        return;
-      }
-      if (nav.dolly) {
-        const offset = camera.position.clone().sub(controls.target);
-        const factor = nav.dolly > 0 ? 1 / DOLLY_BASE : DOLLY_BASE;
-        const d = THREE.MathUtils.clamp(
-          offset.length() * factor,
-          controls.minDistance,
-          controls.maxDistance,
-        );
-        camera.position.copy(controls.target).add(offset.setLength(d));
-      }
-      if (nav.orbit) {
-        const offset = camera.position.clone().sub(controls.target);
-        offset.applyAxisAngle(UP, ORBIT_SPEED * nav.orbit);
-        camera.position.copy(controls.target).add(offset);
-      }
-      if (nav.tilt) {
-        const offset = camera.position.clone().sub(controls.target);
-        const r = offset.length();
-        const az = Math.atan2(offset.x, offset.z);
-        let polar = Math.acos(THREE.MathUtils.clamp(offset.y / r, -1, 1));
-        polar = THREE.MathUtils.clamp(polar + TILT_SPEED * nav.tilt, 0.08, controls.maxPolarAngle);
-        const sp = Math.sin(polar);
-        offset.set(r * sp * Math.sin(az), r * Math.cos(polar), r * sp * Math.cos(az));
-        camera.position.copy(controls.target).add(offset);
-      }
-      if (nav.panX || nav.panZ) {
-        const step = camera.position.distanceTo(controls.target) * PAN_SPEED;
-        const forward = new THREE.Vector3();
-        camera.getWorldDirection(forward);
-        forward.y = 0;
-        if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
-        forward.normalize();
-        const right = new THREE.Vector3().crossVectors(forward, UP).normalize();
-        const move = new THREE.Vector3()
-          .addScaledVector(forward, nav.panZ * step)
-          .addScaledVector(right, nav.panX * step);
-        camera.position.add(move);
-        controls.target.add(move);
       }
     };
 
@@ -1403,21 +1324,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     const d = dirAzAlt(sky.sun.azimuthDeg, sky.sun.altitudeDeg, new THREE.Vector3());
     api.setSkySunDir(d.x, d.y, d.z);
   }, [mode, celestialOn]);
-
-  // --- 画面ボタンのプレス/リリース --- //
-  const start = (patch: Partial<Nav>) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    Object.assign(navRef.current, patch);
-  };
-  const stop = (...keys: NavNumKey[]) => () => {
-    for (const k of keys) navRef.current[k] = 0;
-  };
-  const hold = (patch: Partial<Nav>, ...keys: NavNumKey[]) => ({
-    onPointerDown: start(patch),
-    onPointerUp: stop(...keys),
-    onPointerLeave: stop(...keys),
-    onPointerCancel: stop(...keys),
-  });
 
   // --- 事前ロード操作 --- //
   const refreshStorage = () => {
@@ -1897,10 +1803,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   };
 
   // ホーム: 現在地が判明していればそこへ、なければ日本全体ビューへ。
-  const goHome = () => {
-    if (homeLocRef.current) apiRef.current?.flyTo(homeLocRef.current);
-    else navRef.current.home = true;
-  };
 
   // --- 太陽・月操作 --- //
   const toggleCelestial = (on: boolean) => {
@@ -2519,7 +2421,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         {/* 表示 */}
         <section className={secClass("view")}>
           {secHead("view", "表示")}
-          {switchRow("操作リモコン（右下）", showRemote, setShowRemote)}
           {switchRow("中心マーカー", showCenter, setShowCenter)}
           <label className="switch-row">
             <span>山頂マーカー</span>
@@ -2728,65 +2629,13 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
         </section>
       </aside>
 
-      {/* 右下クラスタ（マップモードのみ）: リモコン＋撮影地点に戻る（2D/3D・自由視点は上部バーへ移動） */}
-      {mode === "map" && (
+      {/* 右下: AR/ライブで「決めた地点へ視点を戻す」ボタンのみ。 */}
+      {mode === "map" && arLike && arLoc && (
         <div className="controls-br">
-          {showRemote && (
-            <div className="nav-controls">
-          <div className="nav-row">
-            <button className="nav-btn" title="水平に近づける" {...hold({ tilt: 1 }, "tilt")}>
-              <span className="nav-ico nav-ico--tilt-up" />
-            </button>
-            <button className="nav-btn" title="見下ろす" {...hold({ tilt: -1 }, "tilt")}>
-              <span className="nav-ico nav-ico--tilt-down" />
-            </button>
-          </div>
-          <div className="nav-row">
-            <button className="nav-btn" title="左に回す" {...hold({ orbit: 1 }, "orbit")}>
-              <IconRotate dir="ccw" />
-            </button>
-            <button className="nav-btn" title="右に回す" {...hold({ orbit: -1 }, "orbit")}>
-              <IconRotate dir="cw" />
-            </button>
-          </div>
-          <div className="nav-pad">
-            <button className="nav-btn nav-up" title="前へ" {...hold({ panZ: 1 }, "panZ")}>
-              <IconCaret dir="up" />
-            </button>
-            <button className="nav-btn nav-left" title="左へ" {...hold({ panX: -1 }, "panX")}>
-              <IconCaret dir="left" />
-            </button>
-            <button className="nav-btn nav-home" title="ホーム（現在地）" onClick={goHome}>
-              <IconHome />
-            </button>
-            <button className="nav-btn nav-right" title="右へ" {...hold({ panX: 1 }, "panX")}>
-              <IconCaret dir="right" />
-            </button>
-            <button className="nav-btn nav-down" title="後ろへ" {...hold({ panZ: -1 }, "panZ")}>
-              <IconCaret dir="down" />
-            </button>
-          </div>
-          <div className="nav-zoom">
-            <button className="nav-btn" title="ズームイン" {...hold({ dolly: 1 }, "dolly")}>
-              <IconPlus />
-            </button>
-            <button className="nav-btn" title="ズームアウト" {...hold({ dolly: -1 }, "dolly")}>
-              <IconMinus />
-            </button>
-          </div>
-            </div>
-          )}
-          {/* AR/ライブ: 自由に見て回った後、地点へ視点を戻す（自由視点の代わり）。 */}
-          {arLike && arLoc && mode === "map" && (
-            <button
-              className="freelook-toggle"
-              title="決めた地点へ視点を戻す"
-              onClick={recenterAr}
-            >
-              <IconPin size={14} />
-              <span>{appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}</span>
-            </button>
-          )}
+          <button className="freelook-toggle" title="決めた地点へ視点を戻す" onClick={recenterAr}>
+            <IconPin size={14} />
+            <span>{appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}</span>
+          </button>
         </div>
       )}
 
