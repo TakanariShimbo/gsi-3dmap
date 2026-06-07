@@ -165,6 +165,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     frameSelectView: (lon: number, lat: number, headingDeg: number) => void; // AR山選択: 撮影地点後方上空の俯瞰へ
     frameAimView: (lon: number, lat: number) => void; // AR向き決め: 撮影地点中心の北上俯瞰へ
     setControlMode: (mode: "map" | "aim" | "orbit") => void; // 地図操作: 通常 / 向き決め / 回転のみ
+    setMapDimension: (dim: "2d" | "3d") => void; // 地図(俯瞰)の2D(真上固定)/3D(傾け可)切替
     setViewCone: (lon: number, lat: number, headingDeg: number, fovDeg: number) => void; // 視野コーン表示
     hideViewCone: () => void;
   } | null>(null);
@@ -184,6 +185,9 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   // サイドバー開閉と、右下リモコンの表示。
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showRemote, setShowRemote] = useState(false);
+  // 地図(俯瞰)の2D/3D。2D=真上固定の地図、3D=傾けられる地形。カメラ視点には影響しない。
+  const [map2D, setMap2D] = useState(false);
+  const map2DRef = useRef(false);
   // 中心マーカー（視点中心＝画面中央の目印）。画面中央のレティクルで表示する。
   const [showCenter, setShowCenter] = useState(true);
   // 空グラデーション表示。
@@ -818,10 +822,32 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       setControlMode: (mode) => {
         controls.enableZoom = true;
         controls.enablePan = mode === "map";
-        controls.enableRotate = mode !== "aim";
-        const rotateOnLeft = mode === "orbit"; // 山選択は左ドラッグ=回転
+        // 2D(真上固定)のときは回転(傾け)させない。3Dのときのみモードに従う。
+        controls.enableRotate = map2DRef.current ? false : mode !== "aim";
+        const rotateOnLeft = mode === "orbit" && !map2DRef.current; // 山選択は左ドラッグ=回転
         controls.mouseButtons.LEFT = rotateOnLeft ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
         controls.touches.ONE = rotateOnLeft ? THREE.TOUCH.ROTATE : THREE.TOUCH.PAN;
+      },
+      // 地図(俯瞰)の2D/3D切替。2D=真上固定で傾け不可、3D=俯瞰角へ傾けて自由回転。
+      setMapDimension: (dim) => {
+        map2DRef.current = dim === "2d";
+        if (dim === "2d") {
+          controls.maxPolarAngle = 0.0001; // 真上に固定（次のupdateで真上へ）
+          controls.enableRotate = false;
+        } else {
+          controls.maxPolarAngle = THREE.MathUtils.degToRad(85);
+          controls.enableRotate = true;
+          // 真上→俯瞰角(55°)へ傾ける。北上のまま。
+          const dist = camera.position.distanceTo(controls.target);
+          const polar = THREE.MathUtils.degToRad(55);
+          camera.position.set(
+            controls.target.x,
+            controls.target.y + dist * Math.cos(polar),
+            controls.target.z + dist * Math.sin(polar),
+          );
+        }
+        camera.up.set(0, 1, 0);
+        controls.update();
       },
       setViewCone: (lon, lat, headingDeg, fovDeg) => {
         updateViewCone(mercXToWorld(lonToMercX(lon)), mercYToWorld(latToMercY(lat)), headingDeg, fovDeg);
@@ -1293,6 +1319,11 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   useEffect(() => {
     arStepRef.current = arStep;
   }, [arStep]);
+  // 地図の2D/3D切替を反映（カメラ視点中は地図に戻った時に効く）。
+  useEffect(() => {
+    map2DRef.current = map2D;
+    apiRef.current?.setMapDimension(map2D ? "2d" : "3d");
+  }, [map2D]);
   useEffect(() => {
     appModeRef.current = appMode;
   }, [appMode]);
@@ -2662,6 +2693,14 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       {/* 右下クラスタ（マップモードのみ）: リモコン＋その下に自由視点 */}
       {mode === "map" && (
         <div className="controls-br">
+          {/* 2D(真上の地図)/3D(傾けられる地形) 切替。場所決めは2Dが楽。 */}
+          <button
+            className="dim-toggle"
+            title={map2D ? "3D（傾けられる地形）に切り替え" : "2D（真上の地図）に切り替え"}
+            onClick={() => setMap2D((v) => !v)}
+          >
+            {map2D ? "3D" : "2D"}
+          </button>
           {showRemote && (
             <div className="nav-controls">
           <div className="nav-row">
