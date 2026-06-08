@@ -2088,7 +2088,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
               const now = Math.round(skyInfo.moonPhase * 8) % 8 === i;
               return (
                 <div key={i} className={`moon-cyc${now ? " is-now" : ""}`} title={moonPhaseName(p)}>
-                  <IconMoonPhase fraction={(1 - Math.cos(2 * Math.PI * p)) / 2} waxing={p < 0.5} size={20} />
+                  <IconMoonPhase fraction={(1 - Math.cos(2 * Math.PI * p)) / 2} waxing={p < 0.5} size={18} />
                 </div>
               );
             })}
