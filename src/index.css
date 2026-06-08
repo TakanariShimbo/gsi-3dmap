@@ -178,6 +178,49 @@ body,
   -webkit-backdrop-filter: blur(8px);
   z-index: 20; /* 写真オーバーレイ(z4)より前面に */
 }
+/* celestial / offline モードの専用パネル（下・右寄り）。サイドバーは使わない。 */
+.mode-panel {
+  position: absolute;
+  right: 12px;
+  bottom: calc(max(8px, env(safe-area-inset-bottom, 8px)) + 24px);
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  color: #e6edf5;
+  background: rgba(14, 19, 27, 0.9);
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 20;
+}
+.mode-panel-grip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.mode-panel-grip .ar-panel-toggle {
+  margin-left: auto;
+}
+.mode-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mode-panel-recenter {
+  align-self: flex-start;
+}
 .cam-readout {
   display: flex;
   justify-content: space-around;
