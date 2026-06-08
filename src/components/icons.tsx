@@ -234,6 +234,18 @@ export function IconGrid({ size = 16, className }: Props) {
   );
 }
 
+/** すべて（全部）。2×2のドットで「まとめて／全件」を表す。検索の「すべて」用。 */
+export function IconAll({ size = 16, className }: Props) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <circle cx="8.5" cy="8.5" r="2.2" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="8.5" r="2.2" fill="currentColor" stroke="none" />
+      <circle cx="8.5" cy="15.5" r="2.2" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="15.5" r="2.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /** 四方向矢印（移動／パン）。 */
 export function IconMove({ size = 16, className }: Props) {
   return (

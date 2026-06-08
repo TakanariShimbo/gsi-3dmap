@@ -743,6 +743,7 @@ body,
 
 .search-bar {
   display: flex;
+  align-items: center;
   gap: 6px;
   background: rgba(14, 19, 27, 0.9);
   border: 1px solid rgba(130, 150, 175, 0.28);
@@ -750,6 +751,29 @@ body,
   padding: 4px;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+}
+/* 検索バー内の検索対象セレクト（山名／土地名／両方）。左端に置いて1行に収める。 */
+.search-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 0 6px 0 4px;
+  color: #b9c6d8;
+  border-right: 1px solid rgba(130, 150, 175, 0.22);
+}
+.search-mode select {
+  padding: 4px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cdd6e2;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+}
+.search-mode select option {
+  color: #1a2230;
 }
 .search-bar input {
   flex: 1;

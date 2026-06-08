@@ -24,6 +24,7 @@ import {
   IconEye,
   IconCaret,
   IconMove,
+  IconAll,
   IconPlus,
   IconMinus,
 } from "./icons";
@@ -1818,7 +1819,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const SEARCH_MODES: { id: SearchMode; label: string }[] = [
     { id: "mountain", label: "山名" },
     { id: "place", label: "土地名" },
-    { id: "both", label: "両方" },
+    { id: "both", label: "全て" },
   ];
 
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
@@ -1968,20 +1969,31 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     </div>
   );
 
-  // 検索（モード選択＋入力＋結果）。各下部ドックで使い回す。
-  const searchModeIcon = (id: SearchMode) =>
-    id === "mountain" ? <IconMountain size={14} /> : id === "place" ? <IconPin size={14} /> : null;
+  // 検索（対象セレクト＋入力＋ボタンを1行に）。各下部ドックで使い回す。
   const searchPanel = (
     <div className="dock-search">
-      <div className="seg seg--fill">
-        {SEARCH_MODES.map((m) => (
-          <button key={m.id} className={m.id === searchMode ? "is-active" : ""} onClick={() => changeMode(m.id)}>
-            {searchModeIcon(m.id)}
-            {m.label}
-          </button>
-        ))}
-      </div>
       <form className="search-bar" onSubmit={doSearch}>
+        <span className="search-mode">
+          {searchMode === "mountain" ? (
+            <IconMountain size={14} />
+          ) : searchMode === "place" ? (
+            <IconPin size={14} />
+          ) : (
+            <IconAll size={14} />
+          )}
+          <select
+            value={searchMode}
+            onChange={(e) => changeMode(e.target.value as SearchMode)}
+            aria-label="検索対象"
+            title="検索対象（山名／土地名／全て）"
+          >
+            {SEARCH_MODES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </span>
         <input
           type="search"
           value={query}
