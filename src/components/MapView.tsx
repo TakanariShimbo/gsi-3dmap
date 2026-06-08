@@ -2215,10 +2215,10 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           aria-expanded={open}
           onClick={() => setDockSecOpen((s) => ({ ...s, [id]: !(s[id] ?? true) }))}
         >
+          <IconCaret dir={open ? "down" : "right"} size={12} />
           <span className="dock-section-label">{label}</span>
-          <IconCaret dir={open ? "up" : "down"} size={12} />
         </button>
-        {open && content}
+        {open && <div className="dock-section-body">{content}</div>}
       </div>
     );
   };

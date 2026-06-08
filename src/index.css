@@ -307,11 +307,11 @@ body,
   border-top: 1px solid rgba(130, 150, 175, 0.16);
   border-bottom: 1px solid rgba(130, 150, 175, 0.16);
 }
-/* 折りたたみ用の見出しボタン（クリックで開閉）。 */
+/* 折りたたみ用の見出しボタン（クリックで開閉）。左の開閉キャレットで「押せる行」だと明示。 */
 .dock-section-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   width: 100%;
   padding: 0;
   background: transparent;
@@ -321,6 +321,13 @@ body,
 .dock-section-head > svg {
   color: #8fa2bb;
   flex: none;
+}
+/* 中身は見出しのラベル位置に揃えて字下げし、見出しの下にぶら下げる。 */
+.dock-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 18px;
 }
 /* モードドックのグリップ内タイトル（太陽/保存/地図 のラベル）。 */
 .mode-panel-title {
