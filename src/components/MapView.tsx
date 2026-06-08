@@ -2204,13 +2204,6 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     : isOffline
       ? "保存したい範囲を画面中央に合わせ、「画面中央を中心地点にする」で中心を決めます。半径・詳細度を選び「ダウンロード」で保存します。"
       : "地図をドラッグ／検索で移動します。「カメラ」で立つと一人称で見回せます。";
-  // アナウンス（タイトル直下の案内）。全モード共通の体裁：先頭にアナウンスアイコン＋本文。
-  const announce = (text: React.ReactNode) => (
-    <div className="dock-hint">
-      <IconInfo size={13} className="dock-hint-ico" />
-      <span>{text}</span>
-    </div>
-  );
   // 折りたたみ可能なセクション（見出しクリックで開閉）。縦長対策。既定は開。
   const dockSection = (id: string, label: React.ReactNode, content: React.ReactNode) => {
     const open = dockSecOpen[id] ?? true;
@@ -2229,6 +2222,23 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       </div>
     );
   };
+  // アナウンス（案内文）も折りたたみ帯に。先頭は ℹ。
+  const announce = (text: React.ReactNode) =>
+    dockSection(
+      "hint",
+      <>
+        <IconInfo size={13} /> 案内
+      </>,
+      <p className="hint-text">{text}</p>,
+    );
+  // 操作行（地図/カメラ・3D/2D・現在地・撮影地点へ 等）も折りたたみ帯に。先頭は移動アイコン。
+  const viewSection = dockSection(
+    "view",
+    <>
+      <IconMove size={13} /> 操作
+    </>,
+    dockControls,
+  );
   // カメラ視点の読み取り・スライダー（地形/天体のカメラビューと AR で使い回す）。
   const cameraReadout = (
     <div className="cam-readout">
@@ -2379,7 +2389,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
                     : `${appMode === "live" ? "見えている山を" : "写真に写る山を"}タップして選びます。地図は自由に動かせます。ずれたら「${appMode === "live" ? "地点に戻る" : "撮影地点へ"}」で元の構図に戻せます。`,
               )}
               {/* 操作（現在地・3D/2D・撮影地点へ） */}
-              {dockControls}
+              {viewSection}
               {/* 内容 */}
               {arStep === "locate" && appMode !== "live" && dockSection("arsearch", <><IconSearch size={13} /> 検索</>, searchPanel)}
               {arStep === "select" && dockSection("arsearch", <><IconSearch size={13} /> 検索</>, searchPanel)}
@@ -2649,7 +2659,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
                 )
               : null}
           {/* 操作（3D/2D・地図/カメラ 等） */}
-          {dockControls}
+          {viewSection}
           {/* 内容 */}
           {simView ? (
             <>
@@ -2767,7 +2777,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           {modePanelOpen && (
             <div className="mode-dock-body">
               {announce(modeHint)}
-              {dockControls}
+              {viewSection}
               {dockSection("search", <><IconSearch size={13} /> 検索</>, searchPanel)}
               {dockSection("basemap", <><IconMap size={13} /> 地図</>, basemapPanel)}
               {showCelestial &&
