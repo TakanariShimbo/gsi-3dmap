@@ -220,7 +220,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   const arHeadingRef = useRef<number | null>(null); // 撮影方位（3D俯瞰の背後角に使う。toggleで再発火させたくないのでref）
   const arPinXZRef = useRef<{ x: number; z: number } | null>(null); // 撮影地点ピンのワールドXZ
   const [modePanelOpen, setModePanelOpen] = useState(true); // celestial/offline の専用パネルの折り畳み
-  const [dockSecOpen, setDockSecOpen] = useState<Record<string, boolean>>({}); // ドック内セクションの開閉（既定=開）
+  const [dockSecOpen, setDockSecOpen] = useState<Record<string, boolean>>({ basemap: false }); // 既定=開（地図は航空写真が既定なので畳む）
   const arPinElRef = useRef<HTMLDivElement | null>(null); // 撮影地点ピンのDOM（先端を地表に接地）
   const arPhotoAspectRef = useRef<number | null>(null); // 撮影写真の縦横比(W/H)。3D枠の整形に使う
   const arPhotoElRef = useRef<HTMLImageElement | null>(null); // 写真オーバーレイのDOM（枠に追従）
