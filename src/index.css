@@ -162,19 +162,6 @@ body,
   flex-direction: column;
   gap: 6px;
 }
-.basemap-switch.map-tools-basemap {
-  grid-template-columns: repeat(4, 1fr);
-  background: rgba(14, 19, 27, 0.85);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 9px;
-  padding: 3px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-.map-tools-basemap button {
-  padding: 6px 4px;
-  font-size: 12px;
-}
 .topbar-btn {
   display: inline-flex;
   align-items: center;
@@ -255,6 +242,53 @@ body,
 .seg button.is-active {
   color: #fff;
   background: rgba(56, 120, 200, 0.85);
+}
+/* 全幅セグメント（検索モード・ベースマップ）。等幅で並ぶ。 */
+.seg--fill {
+  display: flex;
+}
+.seg--fill button {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+}
+/* ラベル付きの動作ボタン（現在地/自由視点/撮影地点へ）。 */
+.dock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cdd6e2;
+  background: rgba(40, 52, 68, 0.5);
+  border: 1px solid rgba(130, 150, 175, 0.28);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dock-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dock-btn.is-active {
+  color: #fff;
+  background: rgba(56, 120, 200, 0.85);
+  border-color: transparent;
+}
+/* ドック本体のセクション（見出し＋区切り線）。ボリュームのある中身を整理。 */
+.dock-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(130, 150, 175, 0.16);
+}
+.dock-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #8fa2bb;
 }
 /* モードドックのグリップ内タイトル（太陽/保存/地図 のラベル）。 */
 .mode-panel-title {
@@ -706,35 +740,6 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
-.search-modes {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-  padding: 3px;
-  background: rgba(14, 19, 27, 0.85);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 9px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-.search-modes button {
-  flex: 1;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: #cdd6e2;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.search-modes button:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-.search-modes button.is-active {
-  color: #fff;
-  background: rgba(48, 100, 160, 0.92);
-  border-color: rgba(120, 180, 240, 0.6);
-}
 
 .search-bar {
   display: flex;
@@ -840,29 +845,6 @@ body,
 }
 
 /* --- ベースマップ切替（サイドバー内・折返しグリッド） --- */
-.basemap-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.basemap-switch button {
-  padding: 8px 9px;
-  font-size: 13px;
-  color: #cdd6e2;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.basemap-switch button:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-.basemap-switch button.is-active {
-  color: #fff;
-  background: rgba(48, 100, 160, 0.92);
-  border-color: rgba(120, 180, 240, 0.6);
-}
 
 /* --- オフライン保存（事前ロード、サイドバー内） --- */
 .save-note {

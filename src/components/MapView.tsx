@@ -1948,38 +1948,35 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       )}
       {showCelestial && mode === "map" && (
         <button
-          className={`topbar-btn${freeLook ? " is-active" : ""}`}
+          className={`dock-btn${freeLook ? " is-active" : ""}`}
           title="自由視点：地図解像度・太陽・月を固定したまま視点だけ動かす"
-          aria-label="自由視点"
           onClick={toggleFreeLook}
         >
-          <IconEye size={18} />
+          <IconEye size={15} /> 自由視点
         </button>
       )}
       {mode === "map" && (
-        <button className="topbar-btn" title="現在地へ移動" aria-label="現在地へ移動" onClick={goToCurrentLocation} disabled={locating}>
-          {locating ? <span className="spinner" aria-hidden="true" /> : <IconLocate size={18} />}
+        <button className="dock-btn" title="現在地へ移動" onClick={goToCurrentLocation} disabled={locating}>
+          {locating ? <span className="spinner" aria-hidden="true" /> : <IconLocate size={15} />} 現在地
         </button>
       )}
       {arLike && arLoc && mode === "map" && (
-        <button
-          className="topbar-btn"
-          title={appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}
-          aria-label={appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"}
-          onClick={recenterAr}
-        >
-          <IconPin size={18} />
+        <button className="dock-btn" title={appMode === "live" ? "現在地に戻る" : "撮影地点に戻る"} onClick={recenterAr}>
+          <IconPin size={15} /> {appMode === "live" ? "地点に戻る" : "撮影地点へ"}
         </button>
       )}
     </div>
   );
 
   // 検索（モード選択＋入力＋結果）。各下部ドックで使い回す。
+  const searchModeIcon = (id: SearchMode) =>
+    id === "mountain" ? <IconMountain size={14} /> : id === "place" ? <IconPin size={14} /> : null;
   const searchPanel = (
     <div className="dock-search">
-      <div className="search-modes">
+      <div className="seg seg--fill">
         {SEARCH_MODES.map((m) => (
           <button key={m.id} className={m.id === searchMode ? "is-active" : ""} onClick={() => changeMode(m.id)}>
+            {searchModeIcon(m.id)}
             {m.label}
           </button>
         ))}
@@ -2029,7 +2026,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
   );
   // ベースマップ切替（航空写真／標準／淡色／陰影）。
   const basemapPanel = (
-    <div className="basemap-switch map-tools-basemap">
+    <div className="seg seg--fill">
       {BASEMAPS.map((b) => (
         <button key={b.id} className={b.id === basemapId ? "is-active" : ""} onClick={() => setBasemapId(b.id)}>
           {b.label}
@@ -2730,10 +2727,26 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
           {modePanelOpen && (
             <div className="mode-dock-body">
               {dockControls}
-              {searchPanel}
-              {basemapPanel}
-              {showCelestial && celestialControls}
-              {isOffline && offlineControls}
+              <div className="dock-section">
+                <div className="dock-section-label">検索</div>
+                {searchPanel}
+              </div>
+              <div className="dock-section">
+                <div className="dock-section-label">地図</div>
+                {basemapPanel}
+              </div>
+              {showCelestial && (
+                <div className="dock-section">
+                  <div className="dock-section-label">太陽・月</div>
+                  {celestialControls}
+                </div>
+              )}
+              {isOffline && (
+                <div className="dock-section">
+                  <div className="dock-section-label">オフライン保存</div>
+                  {offlineControls}
+                </div>
+              )}
             </div>
           )}
         </div>
