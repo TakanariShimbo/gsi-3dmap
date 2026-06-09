@@ -1417,15 +1417,15 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
     if (fadeBusyRef.current) return;
     fadeBusyRef.current = true;
     setFadeTarget(target);
-    setViewFade(1); // 暗転（CSSトランジションで 0→1、220ms）
+    setViewFade(1); // 暗転（CSSトランジションで 0→1、350ms）
     window.setTimeout(() => {
       doSwitch(); // 暗転中に切替（カメラの飛び・地形リビルドを隠す）
       window.setTimeout(() => {
-        setViewFade(0); // 明転（1→0）
+        setViewFade(0); // 明転（1→0、350ms）
         fadeBusyRef.current = false;
-        window.setTimeout(() => setFadeTarget(null), 240); // 明転後にカードを片付け
-      }, 420); // リビルド＆LODが落ち着くまで黒を保持
-    }, 220); // 暗転しきるまで
+        window.setTimeout(() => setFadeTarget(null), 380); // 明転後にカードを片付け
+      }, 1300); // リビルド＆LODが落ち着くまで黒を保持（合計≒2秒）
+    }, 350); // 暗転しきるまで
   };
 
   // カメラ視点モードへ（太陽月は維持。自由視点はマップ専用なのでオフにしてから入る）。

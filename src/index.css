@@ -203,7 +203,7 @@ body,
   background: #0a0d12;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.35s ease;
   z-index: 100;
 }
 .view-fade.is-on {
