@@ -1,8 +1,9 @@
-// 用途別モードのカード定義（ホーム画面の一覧と、画面遷移の暗転カードで共用）。
-import { IconMountain, IconSun, IconImage, IconCamera, IconDownload } from "./components/icons";
+// ホーム画面のカード定義（一覧と、画面遷移の暗転カードで共用）。
+// 用途別モード（MapView）に加え、表示設定の専用画面もカードから入る。
+import { IconMountain, IconSun, IconImage, IconCamera, IconDownload, IconSettings } from "./components/icons";
 import type { AppMode } from "./App";
 
-export const CARDS: { mode: AppMode; icon: React.ReactNode; title: string; desc: string }[] = [
+export const CARDS: { mode: AppMode | "settings"; icon: React.ReactNode; title: string; desc: string }[] = [
   {
     mode: "terrain",
     icon: <IconMountain size={26} />,
@@ -32,5 +33,11 @@ export const CARDS: { mode: AppMode; icon: React.ReactNode; title: string; desc:
     icon: <IconDownload size={26} />,
     title: "オフライン保存",
     desc: "電波が届かない場所でも見られるよう、必要な範囲を前もって保存しておけます",
+  },
+  {
+    mode: "settings",
+    icon: <IconSettings size={26} />,
+    title: "表示設定",
+    desc: "中心・山頂マーカーや空のグラデーション、標高の誇張を切り替えます。各モードに引き継がれます",
   },
 ];
