@@ -1691,13 +1691,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     await img.decode();
     const W = img.naturalWidth;
     const H = img.naturalHeight;
+    const L = Math.max(W, H); // 文字サイズは写真の長辺基準（プレビューの cqmax と一致）
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, W, H);
-    const fs = Math.round(Math.max(13, H * 0.024) * arFontScale); // 文字サイズ（解説・ラベル共通の倍率）
+    const fs = Math.round(L * 0.024 * arFontScale); // 山名ラベル＝長辺の2.4%×倍率（プレビューと一致）
     ctx.textBaseline = "alphabetic";
     if (bakeLabels) {
       ctx.font = `600 ${fs}px system-ui, -apple-system, sans-serif`;
@@ -1721,7 +1722,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       ctx.stroke();
       // 点（白丸・小さめ。視認用に細い暗縁）
       ctx.beginPath();
-      ctx.arc(dotX, dotY, Math.max(2.5, H * 0.009), 0, Math.PI * 2);
+      ctx.arc(dotX, dotY, Math.max(2.5, L * 0.009), 0, Math.PI * 2);
       ctx.fillStyle = "#fff";
       ctx.fill();
       ctx.lineWidth = Math.max(1, H * 0.0016);
@@ -1744,9 +1745,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     if (bakeCaption && cap?.description) {
       const boxW = Math.round(W * 0.62); // ブロック幅
       const pad = Math.round(boxW * 0.05);
-      const titleFs = Math.round(Math.max(15, H * 0.028) * arFontScale);
-      const bodyFs = Math.round(Math.max(12, H * 0.021) * arFontScale);
-      const srcFs = Math.round(Math.max(10, H * 0.014) * arFontScale);
+      const titleFs = Math.round(L * 0.028 * arFontScale); // 長辺の2.8%×倍率
+      const bodyFs = Math.round(L * 0.021 * arFontScale); // 2.1%
+      const srcFs = Math.round(L * 0.014 * arFontScale); // 1.4%
       const titleLineH = Math.round(titleFs * 1.35);
       const lineH = Math.round(bodyFs * 1.55);
       const srcLineH = Math.round(srcFs * 1.9);

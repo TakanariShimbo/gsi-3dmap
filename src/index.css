@@ -1695,6 +1695,9 @@ body,
   background: #000;
   overflow: hidden;
   touch-action: none;
+  /* 文字サイズを写真（このステージ）の長辺基準にするためのコンテナ。
+     子は cqmax（=長辺の1%）で指定すると、画面サイズに依存せず写真比で一定になる。 */
+  container-type: size;
 }
 .ar-edit-photo {
   display: block;
@@ -1735,14 +1738,14 @@ body,
 .ar-edit-label {
   position: absolute;
   transform: translate(-50%, -50%);
-  padding: 4px 9px;
-  font-size: calc(13px * var(--ar-fs, 1));
+  padding: 0.32em 0.6em; /* em＝文字基準で連動 */
+  font-size: calc(2.4cqmax * var(--ar-fs, 1)); /* 写真長辺の 2.4% × 倍率 */
   font-weight: 600;
   white-space: nowrap;
   color: #fff;
   background: rgba(40, 92, 152, 0.94);
   border: 1px solid rgba(120, 180, 240, 0.7);
-  border-radius: 7px;
+  border-radius: 0.5em;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   cursor: grab;
   touch-action: none;
@@ -1755,10 +1758,10 @@ body,
 .ar-caption {
   position: absolute;
   width: 62%;
-  padding: 10px 13px;
+  padding: 3.1%; /* ステージ幅基準（焼き込みの boxW*0.05 と一致） */
   color: #fff;
   background: rgba(0, 0, 0, 0.6);
-  border-radius: 10px;
+  border-radius: 1.6cqmax;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1767,11 +1770,11 @@ body,
   cursor: grabbing;
 }
 .ar-caption-title {
-  font-size: calc(clamp(15px, 4.2vw, 21px) * var(--ar-fs, 1));
+  font-size: calc(2.8cqmax * var(--ar-fs, 1)); /* 写真長辺の 2.8% × 倍率 */
   font-weight: 700;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 0.4em;
 }
 .ar-caption-title b {
   font-size: 0.8em;
@@ -1779,14 +1782,14 @@ body,
   color: #cfe0f5;
 }
 .ar-caption-text {
-  margin: 5px 0 0;
-  font-size: calc(clamp(12px, 3.2vw, 15px) * var(--ar-fs, 1));
+  margin: 0.4em 0 0;
+  font-size: calc(2.1cqmax * var(--ar-fs, 1));
   line-height: 1.55;
   color: rgba(255, 255, 255, 0.94);
 }
 .ar-caption-src {
-  margin-top: 5px;
-  font-size: calc(11px * var(--ar-fs, 1));
+  margin-top: 0.5em;
+  font-size: calc(1.4cqmax * var(--ar-fs, 1));
   color: rgba(255, 255, 255, 0.62);
 }
 /* 文字サイズ選択行（ラベル左＋セグメント右） */
