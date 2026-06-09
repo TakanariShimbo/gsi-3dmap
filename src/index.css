@@ -209,7 +209,23 @@ body,
 .view-fade.is-on {
   pointer-events: auto; /* 切替中は誤操作を防ぐ */
 }
-/* 暗転中に出す「切替先」カード（地図／風景）。ホームのカード調で揃える。 */
+/* ホーム⇄モードの暗転フェード（最前面で全画面）。地図⇄風景と同じ見た目。 */
+.screen-fade {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0d12;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+  z-index: 200;
+}
+.screen-fade.is-on {
+  pointer-events: auto;
+}
+/* 暗転中に出す「切替先」カード（地図／風景／各モード）。ホームのカード調で揃える。 */
 .view-fade-card {
   display: flex;
   flex-direction: column;
@@ -228,9 +244,11 @@ body,
   background: rgba(79, 134, 198, 0.2);
 }
 .view-fade-name {
+  max-width: 80vw;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.06em;
+  text-align: center;
 }
 .view-fade-sub {
   font-size: 12px;
