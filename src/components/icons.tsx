@@ -300,6 +300,18 @@ export function IconSearch({ size = 16, className }: Props) {
   );
 }
 
+/** 設定（スライダー＝調整ツマミ）。表示設定カードの見出し用。 */
+export function IconSettings({ size = 16, className }: Props) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <line x1="4" y1="8.5" x2="20" y2="8.5" />
+      <circle cx="9" cy="8.5" r="2.4" fill="currentColor" stroke="none" />
+      <line x1="4" y1="15.5" x2="20" y2="15.5" />
+      <circle cx="15" cy="15.5" r="2.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /** コンパス（向き・画角）。円＋方位ポインタ。向き・画角セクションの見出し用。 */
 export function IconCompass({ size = 16, className }: Props) {
   return (
