@@ -2333,7 +2333,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
             </span>
           </div>
         )}
-        {fadeTarget && <span className="fade-loading">Loading…</span>}
+        {fadeTarget && <span className="fade-loading">読み込み中</span>}
       </div>
 
       {/* 写真オーバーレイ（カメラ視点でのみ。位置・サイズはループが写真枠に合わせる） */}
