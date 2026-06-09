@@ -237,6 +237,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   // 解説キャプションの言語: 日本語のみ / 英語のみ / 両方 / なし。
   const [captionLang, setCaptionLang] = useState<"ja" | "en" | "both" | "none">("ja");
   const bakeCaption = captionLang !== "none"; // 解説を焼き込むか
+  // 仕上げ(⑤)の操作モード: image=写真をパン/ズーム / edit=ラベル・解説を移動。誤操作を防ぐ。
+  const [arExportMode, setArExportMode] = useState<"image" | "edit">("edit");
+  // 解説ブロックの幅（写真幅に対する割合）。スライダーでアスペクト比を調整。
+  const [captionW, setCaptionW] = useState(0.55);
   // 山名ラベルを写真に焼き込むか（既定ON）。
   const [bakeLabels, setBakeLabels] = useState(true);
   // 解説・ラベル共通の文字サイズ倍率（小0.8 / 中1.0 / 大1.25）。
@@ -1748,9 +1752,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const srcFs = Math.round(L * 0.013 * arFontScale);
         const titleLineH = Math.round(titleFs * 1.3);
         const lineH = Math.round(bodyFs * 1.5);
+        const blockW = Math.round(W * captionW);
         const colGap = Math.round(W * 0.035);
-        const colW = cols.length > 1 ? Math.round(W * 0.44) : Math.round(W * 0.52);
-        const blockW = colW * cols.length + colGap * (cols.length - 1);
+        const colW = cols.length > 1 ? Math.round((blockW - colGap) / 2) : blockW;
         ctx.textAlign = "left";
         // 各カラムの本文を折り返し
         const wrapped = cols.map((c) => {
@@ -1857,8 +1861,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     }
     arDragRef.current = { i: -1, kind: "caption" };
   };
-  // 仕上げ画面: 写真の余白部分をドラッグ＝写真+3Dビューをパン（名札以外の場所）。
+  // 仕上げ画面: 写真の余白部分をドラッグ＝写真+3Dビューをパン（「画像」モードのみ）。
   const onStagePanDown = (e: React.PointerEvent) => {
+    if (arExportMode !== "image") return; // 編集モードでは写真は固定（ラベル・解説の操作優先）
     if ((e.target as HTMLElement).closest(".ar-edit-label, .ar-edit-dot")) return;
     let px = e.clientX;
     let py = e.clientY;
@@ -1876,8 +1881,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
-  // 仕上げ画面: ホイールで写真+3Dビューをズーム（カーソル基準）。
+  // 仕上げ画面: ホイールで写真+3Dビューをズーム（「画像」モードのみ）。
   const onStageWheel = (e: React.WheelEvent) => {
+    if (arExportMode !== "image") return;
     apiRef.current?.stageZoom(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
   };
   const onEditMove = (e: React.PointerEvent) => {
@@ -1889,8 +1895,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
     if (d.kind === "caption") {
       const off = captionDragRef.current ?? { offU: 0, offV: 0 };
-      // ブロック幅（単独55%・両方92%）ぶん、フレーム内に収める。
-      const maxU = captionLang === "both" ? 0.08 : 0.45;
+      // ブロック幅(captionW)ぶん、フレーム内に収める。
+      const maxU = Math.max(0, 1 - captionW);
       setCaptionPos({
         u: Math.min(maxU, Math.max(0, u - off.offU)),
         v: Math.min(0.82, Math.max(0, v - off.offV)),
@@ -2042,6 +2048,27 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       >
         <IconMove size={15} />
         動かす
+      </button>
+    </div>
+  );
+  // 仕上げ(⑤)の操作対象トグル: 画像（パン/ズーム）か、ラベル・解説の編集か。
+  const exportModeToggle = (
+    <div className="edit-mode-toggle" role="group" aria-label="操作対象">
+      <button
+        className={`emt-btn${arExportMode === "edit" ? " is-on" : ""}`}
+        title="編集（ラベル・解説をドラッグで配置）"
+        onClick={() => setArExportMode("edit")}
+      >
+        <IconLocate size={15} />
+        編集
+      </button>
+      <button
+        className={`emt-btn${arExportMode === "image" ? " is-on" : ""}`}
+        title="画像（ドラッグ/ホイールで写真を移動・拡大）"
+        onClick={() => setArExportMode("image")}
+      >
+        <IconMove size={15} />
+        画像
       </button>
     </div>
   );
@@ -2654,7 +2681,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       {appMode === "ar" && arStep === "export" && (
         <div className="ar-edit">
           <div
-            className="ar-edit-stage"
+            className={`ar-edit-stage${arExportMode === "image" ? " is-image-mode" : ""}`}
             ref={arEditStageRef}
             onPointerDown={onStagePanDown}
             onWheel={onStageWheel}
@@ -2705,8 +2732,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               arLabels[captionIdx] &&
               (arLabels[captionIdx].description || arLabels[captionIdx].descriptionEn) && (
                 <div
-                  className={`ar-caption${captionLang === "both" ? " ar-caption--both" : ""}`}
-                  style={{ left: `${captionPos.u * 100}%`, top: `${captionPos.v * 100}%` }}
+                  className="ar-caption"
+                  style={{ left: `${captionPos.u * 100}%`, top: `${captionPos.v * 100}%`, width: `${captionW * 100}%` }}
                   onPointerDown={onCaptionDown}
                   onPointerMove={onEditMove}
                   onPointerUp={onEditUp}
@@ -2762,10 +2789,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               <>
                 {announce(
                   arLabels.length > 0
-                    ? `名札や点・解説ブロックはドラッグで配置できます。下の設定で表示や文字サイズを切り替えられます（${arLabels.length}件）。`
+                    ? `「編集」で名札・解説をドラッグ配置、「画像」で写真をパン・拡大（切替で誤操作を防止）。解説の言語・幅・文字サイズも下で調整できます（${arLabels.length}件）。`
                     : "写真の枠内に山がありません。前の手順に戻り、向きを合わせ直してください。",
                 )}
-                <div className="stage-controls">{stageZoomControls}</div>
+                <div className="stage-controls">
+                  {exportModeToggle}
+                  {stageZoomControls}
+                </div>
                 {/* 焼き込み設定: 山名ラベル・解説の表示、解説の取り上げ山、共通の文字サイズ。 */}
                 {arLabels.length > 0 && (
                   <div className="ar-caption-ctrl">
@@ -2812,6 +2842,19 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                               ) : null,
                             )}
                           </div>
+                        )}
+                        {bakeCaption && (
+                          <label className="ar-fs-row">
+                            <span>解説の幅</span>
+                            <input
+                              type="range"
+                              className="ar-w-slider"
+                              min={30}
+                              max={98}
+                              value={Math.round(captionW * 100)}
+                              onChange={(e) => setCaptionW(Number(e.target.value) / 100)}
+                            />
+                          </label>
                         )}
                       </>
                     )}

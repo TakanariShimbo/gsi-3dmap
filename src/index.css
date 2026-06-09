@@ -1757,7 +1757,7 @@ body,
 /* 解説ブロック（可動カード）。写真内をドラッグで配置でき、焼き込み結果のプレビューを兼ねる。 */
 .ar-caption {
   position: absolute;
-  width: 55%;
+  /* width は captionW（スライダー）で inline 指定 */
   color: #fff;
   /* 背景ボックスは無し。影で可読性を確保（写真長辺基準）。 */
   text-shadow:
@@ -1767,11 +1767,20 @@ body,
   touch-action: none;
   user-select: none;
 }
-.ar-caption--both {
-  width: 92%; /* 日英2カラム */
-}
 .ar-caption:active {
   cursor: grabbing;
+}
+/* 「画像」モード中は注釈（名札・点・解説）を透過させ、写真のパン/ズームを優先。 */
+.ar-edit-stage.is-image-mode .ar-edit-label,
+.ar-edit-stage.is-image-mode .ar-edit-dot,
+.ar-edit-stage.is-image-mode .ar-caption {
+  pointer-events: none;
+}
+/* 解説の幅スライダー */
+.ar-w-slider {
+  flex: 1;
+  max-width: 62%;
+  accent-color: #4f86c6;
 }
 .ar-cap-cols {
   display: flex;
