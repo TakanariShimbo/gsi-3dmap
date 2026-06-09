@@ -18,10 +18,10 @@ export default defineConfig({
       injectRegister: "auto",
       includeAssets: ["favicon.svg", "icons/apple-touch-icon.png"],
       manifest: {
-        name: "GSI 3D Map — 国土地理院 3D地形ビュー",
-        short_name: "GSI 3D Map",
+        name: "Sangaku — 日本の山を見て知る",
+        short_name: "Sangaku",
         description:
-          "国土地理院タイル(DEM＋航空写真)による Google Earth 風 ストリーミング3D地形ビュー。事前ロードでオフライン閲覧も。",
+          "国土地理院の地形データで日本の山を見て知るアプリ。3D地形・太陽と月・写真/カメラのAR山名・オフライン保存。",
         lang: "ja",
         theme_color: "#0a0d12",
         background_color: "#0a0d12",

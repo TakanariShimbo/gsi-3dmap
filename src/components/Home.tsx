@@ -42,8 +42,8 @@ export default function Home({ onSelect }: Props) {
     <div className="home">
       <div className="home-inner">
         <header className="home-head">
-          <h1>GSI 3D Map</h1>
-          <p>国土地理院の標高データでつくる、日本の3D地形マップ</p>
+          <h1>Sangaku</h1>
+          <p>日本の山を見て知る ― 3D地形・太陽と月・AR山名</p>
         </header>
         <div className="home-cards">
           {CARDS.map((c) => (

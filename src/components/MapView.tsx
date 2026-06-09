@@ -2817,7 +2817,7 @@ export default function MapView({ appMode, onHome }: MapViewProps) {
       {/* サイドバー：検索・地図・表示・事前保存 */}
       <aside className={`sidebar${sidebarOpen ? " is-open" : ""}`}>
         <div className="sidebar-head">
-          <span>GSI 3D Map</span>
+          <span>Sangaku</span>
           <button className="sidebar-close" title="閉じる" onClick={() => setSidebarOpen(false)}>×</button>
         </div>
 
