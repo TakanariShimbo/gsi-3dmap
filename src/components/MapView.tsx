@@ -1772,19 +1772,46 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
             ? [Math.round((blockW - colGap) * captionSplit), blockW - colGap - Math.round((blockW - colGap) * captionSplit)]
             : [blockW];
         ctx.textAlign = "left";
-        // 各カラムの本文を折り返し（カラム幅で）
-        const wrapped = cols.map((c, ci) => {
-          const w = colWidths[ci];
-          ctx.font = `400 ${bodyFs}px system-ui, -apple-system, sans-serif`;
+        // 折り返し: 日本語(CJK)は1文字単位、英語はスペース区切りで単語を割らない。
+        // 1単語がカラム幅を超える場合だけ、その単語を文字単位でフォールバック分割する。
+        const isCjk = (ch: string) => /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/.test(ch);
+        const wrapBody = (text: string, w: number): string[] => {
           const lines: string[] = [];
-          let curL = "";
-          for (const ch of c.body) {
-            if (ch === "\n") { lines.push(curL); curL = ""; continue; }
-            if (curL && ctx.measureText(curL + ch).width > w) { lines.push(curL); curL = ch; }
-            else curL += ch;
+          let cur = "";
+          const place = (unit: string) => {
+            if (!cur) {
+              if (ctx.measureText(unit).width <= w) { cur = unit; return; }
+              // 単独でも入りきらない長い単語は文字単位で割る
+              let seg = "";
+              for (const ch of unit) {
+                if (seg && ctx.measureText(seg + ch).width > w) { lines.push(seg); seg = ch; }
+                else seg += ch;
+              }
+              cur = seg;
+              return;
+            }
+            if (ctx.measureText(cur + unit).width <= w) { cur += unit; return; }
+            lines.push(cur.replace(/\s+$/, "")); // 行末スペースは落とす
+            cur = "";
+            place(unit);
+          };
+          let i = 0;
+          while (i < text.length) {
+            const ch = text[i];
+            if (ch === "\n") { lines.push(cur.replace(/\s+$/, "")); cur = ""; i++; continue; }
+            if (ch === " " || ch === "\t") { if (cur) cur += " "; i++; continue; } // 単語間スペース
+            if (isCjk(ch)) { place(ch); i++; continue; } // CJKは1文字ずつ
+            let j = i; // 連続する非空白・非CJK＝英単語などのまとまり
+            while (j < text.length && text[j] !== " " && text[j] !== "\t" && text[j] !== "\n" && !isCjk(text[j])) j++;
+            place(text.slice(i, j));
+            i = j;
           }
-          if (curL) lines.push(curL);
-          return { title: c.title, lines };
+          if (cur) lines.push(cur.replace(/\s+$/, ""));
+          return lines;
+        };
+        const wrapped = cols.map((c, ci) => {
+          ctx.font = `400 ${bodyFs}px system-ui, -apple-system, sans-serif`;
+          return { title: c.title, lines: wrapBody(c.body, colWidths[ci]) };
         });
         const maxLines = Math.max(...wrapped.map((w) => w.lines.length));
         const blockH = titleLineH + maxLines * lineH + Math.round(srcFs * 2);
