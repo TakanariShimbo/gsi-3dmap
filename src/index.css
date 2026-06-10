@@ -1741,13 +1741,15 @@ body,
   transform: translate(-50%, -100%);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center; /* 山名・サブとも中央揃え */
+  text-align: center;
   line-height: 1.12;
   white-space: nowrap;
   color: #fff;
+  /* 影は文字色の反対色（--label-sh）でアウトライン化。白文字→黒影 / 黒文字→白影。 */
   text-shadow:
-    0 0.1cqmax 0.45cqmax rgba(0, 0, 0, 0.9),
-    0 0 0.2cqmax rgba(0, 0, 0, 0.7);
+    0 0 0.22cqmax var(--label-sh, rgba(0, 0, 0, 0.9)),
+    0 0.1cqmax 0.45cqmax var(--label-sh, rgba(0, 0, 0, 0.9));
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1771,10 +1773,10 @@ body,
   position: absolute;
   /* width は captionW（スライダー）で inline 指定 */
   color: #fff;
-  /* 背景ボックスは無し。影で可読性を確保（写真長辺基準）。 */
+  /* 背景なし。影は文字色の反対色（--cap-sh）でアウトライン化＝白文字も黒文字も読める。 */
   text-shadow:
-    0 0.1cqmax 0.55cqmax rgba(0, 0, 0, 0.92),
-    0 0 0.25cqmax rgba(0, 0, 0, 0.85);
+    0 0 0.25cqmax var(--cap-sh, rgba(0, 0, 0, 0.9)),
+    0 0.1cqmax 0.55cqmax var(--cap-sh, rgba(0, 0, 0, 0.9));
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1888,12 +1890,13 @@ body,
   margin: 0.35em 0 0;
   font-size: calc(2cqmax * var(--cap-fs, 1));
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.97);
+  color: inherit; /* 解説の色を本文にも適用 */
 }
 .ar-caption-src {
   margin-top: 0.4em;
   font-size: calc(1.3cqmax * var(--cap-fs, 1));
-  color: rgba(255, 255, 255, 0.82);
+  color: inherit;
+  opacity: 0.78;
 }
 /* 文字サイズ選択行（ラベル左＋セグメント右） */
 .ar-fs-row {

@@ -1721,11 +1721,6 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const cy = lb.labelV * H;
         const name = lb.name;
         const sub = `${lb.nameEn ? lb.nameEn + " | " : ""}${Math.round(lb.elevM).toLocaleString()}m`;
-        ctx.font = `700 ${nameFs}px ${F}`;
-        const nameW = ctx.measureText(name).width;
-        ctx.font = `500 ${subFs}px ${F}`;
-        const subW = ctx.measureText(sub).width;
-        const leftEdge = cx - Math.max(nameW, subW) / 2;
         const subBaseline = cy;
         const nameBaseline = cy - Math.round(subFs * 1.35);
         // リード線（ラベル下 → 点）。細い縦線。
@@ -1743,17 +1738,17 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         ctx.lineWidth = Math.max(1, L * 0.0014);
         ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
         ctx.stroke();
-        // 文字（背景なし・影付き・指定色）
+        // 文字（背景なし・中央揃え・影は文字色の反対色で可読性確保）
         ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,0.85)";
+        ctx.shadowColor = labelColor === "#000000" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)";
         ctx.shadowBlur = Math.round(L * 0.005);
         ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
-        ctx.textAlign = "left";
+        ctx.textAlign = "center";
         ctx.fillStyle = labelColor;
         ctx.font = `700 ${nameFs}px ${F}`;
-        ctx.fillText(name, leftEdge, nameBaseline);
+        ctx.fillText(name, cx, nameBaseline);
         ctx.font = `500 ${subFs}px ${F}`;
-        ctx.fillText(sub, leftEdge, subBaseline);
+        ctx.fillText(sub, cx, subBaseline);
         ctx.restore();
       }
     }
@@ -1798,9 +1793,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const blockH = titleLineH + maxLines * lineH + Math.round(srcFs * 2);
         const bx = Math.min(Math.max(0, Math.round(captionPos.u * W)), Math.max(0, W - blockW));
         const by = Math.min(Math.max(0, Math.round(captionPos.v * H)), Math.max(0, H - blockH));
-        // 影で可読性を確保（背景ボックスなし）
+        // 影で可読性を確保（背景ボックスなし）。影は文字色の反対色。
         ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowColor = captionColor === "#000000" ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.9)";
         ctx.shadowBlur = Math.round(L * 0.006);
         ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
         wrapped.forEach((w, ci) => {
@@ -2798,7 +2793,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     />
                     <div
                       className="ar-edit-label"
-                      style={{ left: `${lb.labelU * 100}%`, top: `${lb.labelV * 100}%`, color: labelColor }}
+                      style={
+                        {
+                          left: `${lb.labelU * 100}%`,
+                          top: `${lb.labelV * 100}%`,
+                          color: labelColor,
+                          "--label-sh": labelColor === "#000000" ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.9)",
+                        } as React.CSSProperties
+                      }
                       onPointerDown={onEditDown(i, "label")}
                       onPointerMove={onEditMove}
                       onPointerUp={onEditUp}
@@ -2819,12 +2821,15 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               (arLabels[captionIdx].description || arLabels[captionIdx].descriptionEn) && (
                 <div
                   className="ar-caption"
-                  style={{
-                    left: `${captionPos.u * 100}%`,
-                    top: `${captionPos.v * 100}%`,
-                    width: `${captionW * 100}%`,
-                    color: captionColor,
-                  }}
+                  style={
+                    {
+                      left: `${captionPos.u * 100}%`,
+                      top: `${captionPos.v * 100}%`,
+                      width: `${captionW * 100}%`,
+                      color: captionColor,
+                      "--cap-sh": captionColor === "#000000" ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.92)",
+                    } as React.CSSProperties
+                  }
                   onPointerDown={onCaptionDown}
                   onPointerMove={onEditMove}
                   onPointerUp={onEditUp}
@@ -2934,13 +2939,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                         </div>
                         <div className="ar-fs-row">
                           <span>名前の色</span>
-                          <input
-                            type="color"
-                            className="ar-color"
-                            value={labelColor}
-                            onChange={(e) => setLabelColor(e.target.value)}
-                            aria-label="名前の色"
-                          />
+                          <div className="seg" role="group" aria-label="名前の色">
+                            {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
+                              <button key={v} className={labelColor === v ? "is-active" : ""} onClick={() => setLabelColor(v)}>
+                                {lab}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </>
                     )}
@@ -2993,13 +2998,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                             </div>
                             <div className="ar-fs-row">
                               <span>解説の色</span>
-                              <input
-                                type="color"
-                                className="ar-color"
-                                value={captionColor}
-                                onChange={(e) => setCaptionColor(e.target.value)}
-                                aria-label="解説の色"
-                              />
+                              <div className="seg" role="group" aria-label="解説の色">
+                                {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
+                                  <button key={v} className={captionColor === v ? "is-active" : ""} onClick={() => setCaptionColor(v)}>
+                                    {lab}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           </>
                         )}
