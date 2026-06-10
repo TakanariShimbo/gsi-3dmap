@@ -1724,15 +1724,15 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const subBaseline = cy;
         const nameBaseline = cy - Math.round(subFs * 1.35);
         // リード線（ラベル下 → 山頂）。文字色に合わせる。点(頂点)は出力しない。
-        // 両端は描かず、点と点の中心80%だけ実線（10%ずつ余白）。
+        // 両端は描かず、点と点の中心66%だけ実線（17%ずつ余白）。
         const ax = cx, ay = cy + Math.round(subFs * 0.3);
         const bx = dotX, by = dotY;
         ctx.strokeStyle = labelColor;
         ctx.globalAlpha = 0.9;
         ctx.lineWidth = Math.max(1, L * 0.0022);
         ctx.beginPath();
-        ctx.moveTo(ax + (bx - ax) * 0.1, ay + (by - ay) * 0.1);
-        ctx.lineTo(ax + (bx - ax) * 0.9, ay + (by - ay) * 0.9);
+        ctx.moveTo(ax + (bx - ax) * 0.17, ay + (by - ay) * 0.17);
+        ctx.lineTo(ax + (bx - ax) * 0.83, ay + (by - ay) * 0.83);
         ctx.stroke();
         ctx.globalAlpha = 1;
         // 文字（背景なし・中央揃え・影は文字色の反対色で可読性確保。黒文字の白影は控えめ）
@@ -2767,16 +2767,16 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               <>
                 <svg className="ar-edit-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
                   {arLabels.map((lb, i) => {
-                    // 両端は描かず、点と点の中心80%だけ実線（10%ずつ余白）。
+                    // 両端は描かず、点と点の中心66%だけ実線（17%ずつ余白）。
                     const ax = lb.labelU * 100, ay = lb.labelV * 100;
                     const bx = lb.dotU * 100, by = lb.dotV * 100;
                     return (
                       <line
                         key={i}
-                        x1={ax + (bx - ax) * 0.1}
-                        y1={ay + (by - ay) * 0.1}
-                        x2={ax + (bx - ax) * 0.9}
-                        y2={ay + (by - ay) * 0.9}
+                        x1={ax + (bx - ax) * 0.17}
+                        y1={ay + (by - ay) * 0.17}
+                        x2={ax + (bx - ax) * 0.83}
+                        y2={ay + (by - ay) * 0.83}
                         stroke={labelColor}
                         strokeOpacity={0.9}
                         strokeWidth={1.2}
@@ -2791,6 +2791,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                       className="ar-edit-dot"
                       style={{ left: `${lb.dotU * 100}%`, top: `${lb.dotV * 100}%` }}
                       onPointerDown={onEditDown(i, "dot")}
+                      onPointerMove={onEditMove}
+                      onPointerUp={onEditUp}
+                    />
+                    {/* ラベル側のアンカー点（青の半透明・ラベルを動かす） */}
+                    <div
+                      className="ar-edit-dot"
+                      style={{ left: `${lb.labelU * 100}%`, top: `${lb.labelV * 100}%` }}
+                      onPointerDown={onEditDown(i, "label")}
                       onPointerMove={onEditMove}
                       onPointerUp={onEditUp}
                     />

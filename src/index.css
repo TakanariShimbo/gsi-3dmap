@@ -1726,7 +1726,7 @@ body,
 .ar-edit-dot::before {
   content: "";
   position: absolute;
-  inset: 5px; /* 解説ハンドルと同じ青の半透明ドット（編集UIのみ・出力には焼かない） */
+  inset: 6.5px; /* 解説ハンドルと同じ青の半透明ドット・小さめ（編集UIのみ・出力には焼かない） */
   border-radius: 50%;
   background: rgba(143, 194, 255, 0.6);
 }
@@ -1808,8 +1808,8 @@ body,
 /* 4辺のリサイズハンドル（枠線と同色の半透明ドット・小さめ）。 */
 .ar-cap-handle {
   position: absolute;
-  width: clamp(9px, 2cqmax, 15px);
-  height: clamp(9px, 2cqmax, 15px);
+  width: clamp(7px, 1.5cqmax, 11px);
+  height: clamp(7px, 1.5cqmax, 11px);
   background: rgba(143, 194, 255, 0.6);
   border-radius: 50%;
   touch-action: none;
@@ -1867,8 +1867,8 @@ body,
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(9px, 2cqmax, 15px);
-  height: clamp(9px, 2cqmax, 15px);
+  width: clamp(7px, 1.5cqmax, 11px);
+  height: clamp(7px, 1.5cqmax, 11px);
   background: rgba(143, 194, 255, 0.6);
   border-radius: 50%;
 }
