@@ -1735,24 +1735,36 @@ body,
 .ar-edit-dot:active {
   cursor: grabbing;
 }
+/* 山名ラベル（背景なし・影付き。山名(大)＋ Mt.ローマ字｜標高(小)。下端中央が点へのリード線の起点）。 */
 .ar-edit-label {
   position: absolute;
-  transform: translate(-50%, -50%);
-  padding: 0.32em 0.6em; /* em＝文字基準で連動 */
-  font-size: calc(2.4cqmax * var(--ar-fs, 1)); /* 写真長辺の 2.4% × 倍率 */
-  font-weight: 600;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.12;
   white-space: nowrap;
   color: #fff;
-  background: rgba(40, 92, 152, 0.94);
-  border: 1px solid rgba(120, 180, 240, 0.7);
-  border-radius: 0.5em;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  text-shadow:
+    0 0.1cqmax 0.45cqmax rgba(0, 0, 0, 0.9),
+    0 0 0.2cqmax rgba(0, 0, 0, 0.7);
   cursor: grab;
   touch-action: none;
   user-select: none;
 }
 .ar-edit-label:active {
   cursor: grabbing;
+}
+.ar-label-name {
+  font-size: calc(2.7cqmax * var(--label-fs, 1));
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.ar-label-sub {
+  margin-top: 0.15em;
+  font-size: calc(1.55cqmax * var(--label-fs, 1));
+  font-weight: 500;
+  opacity: 0.92;
 }
 /* 解説ブロック（可動カード）。写真内をドラッグで配置でき、焼き込み結果のプレビューを兼ねる。 */
 .ar-caption {
@@ -1861,7 +1873,7 @@ body,
   border-radius: 50%;
 }
 .ar-caption-title {
-  font-size: calc(2.6cqmax * var(--ar-fs, 1)); /* 写真長辺の 2.6% × 倍率 */
+  font-size: calc(2.6cqmax * var(--cap-fs, 1)); /* 写真長辺の 2.6% × 倍率 */
   font-weight: 700;
   display: flex;
   align-items: baseline;
@@ -1874,13 +1886,13 @@ body,
 }
 .ar-caption-text {
   margin: 0.35em 0 0;
-  font-size: calc(2cqmax * var(--ar-fs, 1));
+  font-size: calc(2cqmax * var(--cap-fs, 1));
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.97);
 }
 .ar-caption-src {
   margin-top: 0.4em;
-  font-size: calc(1.3cqmax * var(--ar-fs, 1));
+  font-size: calc(1.3cqmax * var(--cap-fs, 1));
   color: rgba(255, 255, 255, 0.82);
 }
 /* 文字サイズ選択行（ラベル左＋セグメント右） */
@@ -1891,6 +1903,23 @@ body,
   gap: 10px;
   font-size: 13px;
   color: #cdd6e2;
+}
+/* 色ピッカー（ラベル/解説の文字色）。 */
+.ar-color {
+  width: 44px;
+  height: var(--btn-h);
+  padding: 2px;
+  background: rgba(40, 52, 68, 0.5);
+  border: 1px solid rgba(130, 150, 175, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ar-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+.ar-color::-webkit-color-swatch-wrapper {
+  padding: 0;
 }
 /* キャプションの焼き込み設定（トグル＋取り上げる山の切替チップ） */
 .ar-caption-ctrl {

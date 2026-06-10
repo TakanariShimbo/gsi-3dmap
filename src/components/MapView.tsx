@@ -252,8 +252,12 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [captionSplit, setCaptionSplit] = useState(0.5);
   // 山名ラベルを写真に焼き込むか（既定ON）。
   const [bakeLabels, setBakeLabels] = useState(true);
-  // 解説・ラベル共通の文字サイズ倍率（小0.8 / 中1.0 / 大1.25）。
-  const [arFontScale, setArFontScale] = useState(1);
+  // 文字サイズ倍率（小0.8 / 中1.0 / 大1.25）。ラベルと解説で別々。
+  const [labelScale, setLabelScale] = useState(1);
+  const [captionScale, setCaptionScale] = useState(1);
+  // 文字色。ラベルと解説で別々。
+  const [labelColor, setLabelColor] = useState("#ffffff");
+  const [captionColor, setCaptionColor] = useState("#ffffff");
   // 解説ブロックの配置（写真フレーム内の正規化座標。ブロック左上）。ドラッグで移動。
   const [captionPos, setCaptionPos] = useState({ u: 0.05, v: 0.62 });
   const captionDragRef = useRef<{ offU: number; offV: number } | null>(null); // 解説ドラッグの掴み位置
@@ -1705,45 +1709,52 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, W, H);
-    const fs = Math.round(L * 0.024 * arFontScale); // 山名ラベル＝長辺の2.4%×倍率（プレビューと一致）
+    const nameFs = Math.round(L * 0.026 * labelScale); // 山名（大）
+    const subFs = Math.round(nameFs * 0.62); // Mt.ローマ字｜標高（小）
+    const F = "system-ui, -apple-system, sans-serif";
     ctx.textBaseline = "alphabetic";
     if (bakeLabels) {
-      ctx.font = `600 ${fs}px system-ui, -apple-system, sans-serif`;
       for (const lb of arLabels) {
-      const dotX = lb.dotU * W;
-      const dotY = lb.dotV * H;
-      const text = `${lb.name} ${Math.round(lb.elevM)}m`;
-      const tw = ctx.measureText(text).width;
-      const padX = fs * 0.5;
-      const padY = fs * 0.32;
-      const chipH = fs + padY * 2;
-      const chipW = tw + padX * 2;
-      const cx = lb.labelU * W; // 名札の中心
-      const cy = lb.labelV * H;
-      // 引き出し線（名札の中心→点）
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.lineWidth = Math.max(1, fs * 0.06);
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(dotX, dotY);
-      ctx.stroke();
-      // 点（白丸・小さめ。視認用に細い暗縁）
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, Math.max(2.5, L * 0.009), 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      ctx.lineWidth = Math.max(1, H * 0.0016);
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.stroke();
-      // チップ（名札。中心 = cx,cy）
-      ctx.fillStyle = "rgba(40, 92, 152, 0.92)";
-      ctx.beginPath();
-      ctx.roundRect(cx - chipW / 2, cy - chipH / 2, chipW, chipH, 6);
-      ctx.fill();
-      // 文字
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.fillText(text, cx, cy + fs * 0.34);
+        const dotX = lb.dotU * W;
+        const dotY = lb.dotV * H;
+        const cx = lb.labelU * W; // ラベルの基準（下端中央）
+        const cy = lb.labelV * H;
+        const name = lb.name;
+        const sub = `${lb.nameEn ? lb.nameEn + " | " : ""}${Math.round(lb.elevM).toLocaleString()}m`;
+        ctx.font = `700 ${nameFs}px ${F}`;
+        const nameW = ctx.measureText(name).width;
+        ctx.font = `500 ${subFs}px ${F}`;
+        const subW = ctx.measureText(sub).width;
+        const leftEdge = cx - Math.max(nameW, subW) / 2;
+        const subBaseline = cy;
+        const nameBaseline = cy - Math.round(subFs * 1.35);
+        // リード線（ラベル下 → 点）。細い縦線。
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = Math.max(1, L * 0.0024);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + Math.round(subFs * 0.3));
+        ctx.lineTo(dotX, dotY);
+        ctx.stroke();
+        // 点（白丸・小さめ）
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, Math.max(2.5, L * 0.007), 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, L * 0.0014);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.stroke();
+        // 文字（背景なし・影付き・指定色）
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.85)";
+        ctx.shadowBlur = Math.round(L * 0.005);
+        ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        ctx.textAlign = "left";
+        ctx.fillStyle = labelColor;
+        ctx.font = `700 ${nameFs}px ${F}`;
+        ctx.fillText(name, leftEdge, nameBaseline);
+        ctx.font = `500 ${subFs}px ${F}`;
+        ctx.fillText(sub, leftEdge, subBaseline);
+        ctx.restore();
       }
     }
 
@@ -1752,13 +1763,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     if (captionLang !== "none" && cap && (cap.description || cap.descriptionEn)) {
       const cols: { title: string; body: string }[] = [];
       if ((captionLang === "ja" || captionLang === "both") && cap.description)
-        cols.push({ title: `${cap.name}  ${Math.round(cap.elevM)}m`, body: cap.description });
+        cols.push({ title: cap.name, body: cap.description }); // 標高はラベル側に出すので解説には入れない
       if ((captionLang === "en" || captionLang === "both") && cap.descriptionEn)
-        cols.push({ title: `${cap.nameEn || cap.name}  ${Math.round(cap.elevM)} m`, body: cap.descriptionEn });
+        cols.push({ title: cap.nameEn || cap.name, body: cap.descriptionEn });
       if (cols.length) {
-        const titleFs = Math.round(L * 0.026 * arFontScale);
-        const bodyFs = Math.round(L * 0.02 * arFontScale);
-        const srcFs = Math.round(L * 0.013 * arFontScale);
+        const titleFs = Math.round(L * 0.026 * captionScale);
+        const bodyFs = Math.round(L * 0.02 * captionScale);
+        const srcFs = Math.round(L * 0.013 * captionScale);
         const titleLineH = Math.round(titleFs * 1.3);
         const lineH = Math.round(bodyFs * 1.5);
         const blockW = Math.round(W * captionW);
@@ -1795,16 +1806,16 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         wrapped.forEach((w, ci) => {
           const cx = bx + (ci === 0 ? 0 : colWidths[0] + colGap);
           let ty = by;
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = captionColor;
           ctx.font = `700 ${titleFs}px system-ui, -apple-system, sans-serif`;
           ctx.fillText(w.title, cx, ty + titleFs);
           ty += titleLineH;
           ctx.font = `400 ${bodyFs}px system-ui, -apple-system, sans-serif`;
-          ctx.fillStyle = "rgba(255,255,255,0.97)";
           for (const ln of w.lines) { ctx.fillText(ln, cx, ty + bodyFs); ty += lineH; }
         });
-        // 出典（1回、左下）
-        ctx.fillStyle = "rgba(255,255,255,0.78)";
+        // 出典（1回、左下。少し薄く）
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = captionColor;
         ctx.font = `400 ${srcFs}px system-ui, -apple-system, sans-serif`;
         const srcText = captionLang === "en" ? "Auto-generated from facts (ref: Wikipedia et al.)" : "解説は事実をもとに自動生成（参考: Wikipedia ほか）";
         ctx.fillText(srcText, bx, by + titleLineH + maxLines * lineH + srcFs);
@@ -2756,7 +2767,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
             ref={arEditStageRef}
             onPointerDown={onStagePanDown}
             onWheel={onStageWheel}
-            style={{ "--ar-fs": arFontScale } as React.CSSProperties}
+            style={{ "--label-fs": labelScale, "--cap-fs": captionScale } as React.CSSProperties}
           >
             {photoUrl && <img className="ar-edit-photo" src={photoUrl} alt="" draggable={false} />}
             {/* 山名ラベル（表示ONのときだけ。引き出し線＋点＋名札） */}
@@ -2787,12 +2798,16 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     />
                     <div
                       className="ar-edit-label"
-                      style={{ left: `${lb.labelU * 100}%`, top: `${lb.labelV * 100}%` }}
+                      style={{ left: `${lb.labelU * 100}%`, top: `${lb.labelV * 100}%`, color: labelColor }}
                       onPointerDown={onEditDown(i, "label")}
                       onPointerMove={onEditMove}
                       onPointerUp={onEditUp}
                     >
-                      {lb.name} {Math.round(lb.elevM)}m
+                      <span className="ar-label-name">{lb.name}</span>
+                      <span className="ar-label-sub">
+                        {lb.nameEn ? `${lb.nameEn} | ` : ""}
+                        {Math.round(lb.elevM).toLocaleString()}m
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -2804,7 +2819,12 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               (arLabels[captionIdx].description || arLabels[captionIdx].descriptionEn) && (
                 <div
                   className="ar-caption"
-                  style={{ left: `${captionPos.u * 100}%`, top: `${captionPos.v * 100}%`, width: `${captionW * 100}%` }}
+                  style={{
+                    left: `${captionPos.u * 100}%`,
+                    top: `${captionPos.v * 100}%`,
+                    width: `${captionW * 100}%`,
+                    color: captionColor,
+                  }}
                   onPointerDown={onCaptionDown}
                   onPointerMove={onEditMove}
                   onPointerUp={onEditUp}
@@ -2815,10 +2835,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                         className="ar-cap-col"
                         style={captionLang === "both" ? { flex: `${captionSplit} 1 0` } : undefined}
                       >
-                        <div className="ar-caption-title">
-                          {arLabels[captionIdx].name}
-                          <b>{Math.round(arLabels[captionIdx].elevM)}m</b>
-                        </div>
+                        <div className="ar-caption-title">{arLabels[captionIdx].name}</div>
                         <p className="ar-caption-text">{arLabels[captionIdx].description}</p>
                       </div>
                     )}
@@ -2836,10 +2853,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                         className="ar-cap-col"
                         style={captionLang === "both" ? { flex: `${1 - captionSplit} 1 0` } : undefined}
                       >
-                        <div className="ar-caption-title">
-                          {arLabels[captionIdx].nameEn || arLabels[captionIdx].name}
-                          <b>{Math.round(arLabels[captionIdx].elevM)} m</b>
-                        </div>
+                        <div className="ar-caption-title">{arLabels[captionIdx].nameEn || arLabels[captionIdx].name}</div>
                         <p className="ar-caption-text">{arLabels[captionIdx].descriptionEn}</p>
                       </div>
                     )}
@@ -2896,6 +2910,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 {/* 焼き込み設定: 山名ラベル・解説の表示、解説の取り上げ山、共通の文字サイズ。 */}
                 {arLabels.length > 0 && (
                   <div className="ar-caption-ctrl">
+                    {/* === 山名ラベル === */}
                     <label className="switch-row">
                       <span>写真に山名を入れる</span>
                       <input
@@ -2905,9 +2920,33 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                         onChange={(e) => setBakeLabels(e.target.checked)}
                       />
                     </label>
+                    {bakeLabels && (
+                      <>
+                        <div className="ar-fs-row">
+                          <span>名前の大きさ</span>
+                          <div className="seg" role="group" aria-label="名前の文字サイズ">
+                            {([["小", 0.8], ["中", 1], ["大", 1.25]] as [string, number][]).map(([lab, v]) => (
+                              <button key={lab} className={labelScale === v ? "is-active" : ""} onClick={() => setLabelScale(v)}>
+                                {lab}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="ar-fs-row">
+                          <span>名前の色</span>
+                          <input
+                            type="color"
+                            className="ar-color"
+                            value={labelColor}
+                            onChange={(e) => setLabelColor(e.target.value)}
+                            aria-label="名前の色"
+                          />
+                        </div>
+                      </>
+                    )}
+                    {/* === 解説 === */}
                     {arLabels.some((l) => l.description) && (
                       <>
-                        {/* 解説の言語: 日本語のみ / 英語のみ / 両方 / なし */}
                         <div className="ar-fs-row">
                           <span>解説</span>
                           <div className="seg" role="group" aria-label="解説の言語">
@@ -2940,19 +2979,32 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                             )}
                           </div>
                         )}
+                        {bakeCaption && (
+                          <>
+                            <div className="ar-fs-row">
+                              <span>解説の大きさ</span>
+                              <div className="seg" role="group" aria-label="解説の文字サイズ">
+                                {([["小", 0.8], ["中", 1], ["大", 1.25]] as [string, number][]).map(([lab, v]) => (
+                                  <button key={lab} className={captionScale === v ? "is-active" : ""} onClick={() => setCaptionScale(v)}>
+                                    {lab}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="ar-fs-row">
+                              <span>解説の色</span>
+                              <input
+                                type="color"
+                                className="ar-color"
+                                value={captionColor}
+                                onChange={(e) => setCaptionColor(e.target.value)}
+                                aria-label="解説の色"
+                              />
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
-                    {/* 文字サイズ（解説・ラベル共通） */}
-                    <div className="ar-fs-row">
-                      <span>文字サイズ</span>
-                      <div className="seg" role="group" aria-label="文字サイズ">
-                        {([["小", 0.8], ["中", 1], ["大", 1.25]] as [string, number][]).map(([lab, v]) => (
-                          <button key={lab} className={arFontScale === v ? "is-active" : ""} onClick={() => setArFontScale(v)}>
-                            {lab}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 )}
                 <div className="ar-dock-actions">
