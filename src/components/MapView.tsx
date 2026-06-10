@@ -1724,12 +1724,15 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const subBaseline = cy;
         const nameBaseline = cy - Math.round(subFs * 1.35);
         // リード線（ラベル下 → 山頂）。文字色に合わせる。点(頂点)は出力しない。
+        // 両端は描かず、点と点の中心80%だけ実線（10%ずつ余白）。
+        const ax = cx, ay = cy + Math.round(subFs * 0.3);
+        const bx = dotX, by = dotY;
         ctx.strokeStyle = labelColor;
         ctx.globalAlpha = 0.9;
         ctx.lineWidth = Math.max(1, L * 0.0022);
         ctx.beginPath();
-        ctx.moveTo(cx, cy + Math.round(subFs * 0.3));
-        ctx.lineTo(dotX, dotY);
+        ctx.moveTo(ax + (bx - ax) * 0.1, ay + (by - ay) * 0.1);
+        ctx.lineTo(ax + (bx - ax) * 0.9, ay + (by - ay) * 0.9);
         ctx.stroke();
         ctx.globalAlpha = 1;
         // 文字（背景なし・中央揃え・影は文字色の反対色で可読性確保。黒文字の白影は控えめ）
@@ -2763,19 +2766,24 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
             {bakeLabels && (
               <>
                 <svg className="ar-edit-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  {arLabels.map((lb, i) => (
-                    <line
-                      key={i}
-                      x1={lb.labelU * 100}
-                      y1={lb.labelV * 100}
-                      x2={lb.dotU * 100}
-                      y2={lb.dotV * 100}
-                      stroke={labelColor}
-                      strokeOpacity={0.9}
-                      strokeWidth={1.2}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ))}
+                  {arLabels.map((lb, i) => {
+                    // 両端は描かず、点と点の中心80%だけ実線（10%ずつ余白）。
+                    const ax = lb.labelU * 100, ay = lb.labelV * 100;
+                    const bx = lb.dotU * 100, by = lb.dotV * 100;
+                    return (
+                      <line
+                        key={i}
+                        x1={ax + (bx - ax) * 0.1}
+                        y1={ay + (by - ay) * 0.1}
+                        x2={ax + (bx - ax) * 0.9}
+                        y2={ay + (by - ay) * 0.9}
+                        stroke={labelColor}
+                        strokeOpacity={0.9}
+                        strokeWidth={1.2}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
                 </svg>
                 {arLabels.map((lb, i) => (
                   <div key={i}>
