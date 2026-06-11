@@ -1945,27 +1945,35 @@ body,
   width: 100%;
   margin: 2px 0 2px;
 }
-/* 詳細設定（タイトル/解説サイズの微調整）。既定は畳む。 */
-.ar-adv {
-  margin-top: 2px;
+/* 焼き込み設定の折りたたみセクション（山名ラベル / 解説）。既定は開く。 */
+.ar-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(130, 150, 175, 0.18);
 }
-.ar-adv > summary {
+.ar-sec:first-child {
+  border-top: none;
+}
+.ar-sec > summary {
   cursor: pointer;
   list-style: none;
-  padding: 4px 0;
-  font-size: 12px;
-  color: #9fb0c4;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e3eaf3;
   user-select: none;
 }
-.ar-adv > summary::-webkit-details-marker {
+.ar-sec > summary::-webkit-details-marker {
   display: none;
 }
-.ar-adv > summary::before {
-  content: "▸ ";
-  font-size: 10px;
-}
-.ar-adv[open] > summary::before {
+.ar-sec > summary::before {
   content: "▾ ";
+  font-size: 10px;
+  color: #9fb0c4;
+}
+.ar-sec:not([open]) > summary::before {
+  content: "▸ ";
 }
 /* 色ピッカー（ラベル/解説の文字色）。 */
 .ar-color {
