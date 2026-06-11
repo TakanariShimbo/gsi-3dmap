@@ -3794,13 +3794,6 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     : "選んだ山名が写真に重なります。ドラッグで向き、スライダーで目線高さ／傾きを合わせ込みます。",
                 )
               : null}
-          {/* align のみ: ステージ操作（合わせる/動かす + ズーム）は常時表示 */}
-          {!simView && arLike && arStep === "align" && (
-            <div className="stage-controls">
-              {editModeToggle}
-              {stageZoomControls}
-            </div>
-          )}
           {/* セクションはタブで1つだけ表示 */}
           {simView
             ? dockTabs("sim", [
@@ -3822,7 +3815,21 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   : null,
               ])
             : dockTabs("align", [
-                viewTab,
+                {
+                  id: "view",
+                  label: <><IconMove size={13} /> 操作</>,
+                  content: (
+                    <>
+                      {arLike && arStep === "align" && (
+                        <div className="stage-controls">
+                          {editModeToggle}
+                          {stageZoomControls}
+                        </div>
+                      )}
+                      {dockControls}
+                    </>
+                  ),
+                },
                 {
                   id: "cam",
                   label: <><IconCamera size={13} /> カメラ設定</>,
