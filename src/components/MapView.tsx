@@ -284,6 +284,27 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [captionSplit, setCaptionSplit] = useState(0.5);
   // 両方表示のときの日英の並べ方（横=左右2カラム / 縦=上下に積む）。
   const [captionLayout, setCaptionLayout] = useState<"horizontal" | "vertical">("horizontal");
+  // 両方表示のときの見出し（タイトル）の出し方。
+  //  each   … 各本文の上にその言語の見出し（現状）
+  //  stack  … 日英の見出しを上にまとめて2行→その下に両本文
+  //  single … 日本語の見出しだけを上に→その下に両本文
+  //  slash  … 「日 / 英」を1行にまとめて上に→その下に両本文
+  const [captionTitleMode, setCaptionTitleMode] = useState<"each" | "stack" | "single" | "slash">("each");
+  // 解説プレビュー用の派生値（両方表示時の見出し構成）。焼き込み側のロジックと一致させる。
+  const capItem = arLabels[captionIdx];
+  const capBoth = captionLang === "both" && !!capItem?.description && !!capItem?.descriptionEn;
+  const capName = capItem?.name ?? "";
+  const capNameEn = capItem?.nameEn || capItem?.name || "";
+  // 共有見出し（both かつ each 以外）。それ以外は各本文に自前の見出しを付ける。
+  const capSharedTitles: string[] =
+    capBoth && captionTitleMode !== "each"
+      ? captionTitleMode === "stack"
+        ? [capName, capNameEn]
+        : captionTitleMode === "single"
+          ? [capName]
+          : [`${capName} / ${capNameEn}`] // slash
+      : [];
+  const capColHasTitle = !capBoth || captionTitleMode === "each";
   // 山名ラベルを写真に焼き込むか（既定ON）。
   const [bakeLabels, setBakeLabels] = useState(true);
   // 文字サイズ倍率（スライダーで連続調整）。役割ごとに独立。初期値はすべて 1.0。
@@ -1895,13 +1916,25 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
           ctx.font = `400 ${bodyFs}px ${ffBody}`;
           return { title: c.title, lines: wrapBody(c.body, colWidths[ci]) };
         });
-        const colHeights = wrapped.map((w) => titleLineH + w.lines.length * lineH);
-        const maxLines = Math.max(...wrapped.map((w) => w.lines.length));
+        const both = cols.length > 1;
+        // 共有見出し（both かつ each 以外）。each や単一言語は各カラムに見出しを付ける。
+        const sharedTitles: string[] =
+          both && captionTitleMode !== "each"
+            ? captionTitleMode === "stack"
+              ? [cols[0].title, cols[1].title]
+              : captionTitleMode === "single"
+                ? [cols[0].title]
+                : [`${cols[0].title} / ${cols[1].title}`] // slash
+            : [];
+        const colHasTitle = !both || captionTitleMode === "each";
         const rowGap = Math.round(bodyFs * 0.9); // 縦並びの段間
-        // 本文ブロックの高さ。縦並びは各段の合計＋段間、横並びは最も長い段に合わせる。
-        const bodyBlockH = vertical
-          ? colHeights.reduce((a, b) => a + b, 0) + rowGap * (cols.length - 1)
-          : titleLineH + maxLines * lineH;
+        // 各本文カラムの高さ（自前見出しを含む場合あり）。
+        const colBodyH = wrapped.map((w) => (colHasTitle ? titleLineH : 0) + w.lines.length * lineH);
+        const sharedTitleH = sharedTitles.length * titleLineH;
+        // 本文ブロックの高さ：縦は積み上げ＋段間、横は最も高いカラムに合わせる。共有見出しは上に加算。
+        const bodyBlockH =
+          sharedTitleH +
+          (vertical ? colBodyH.reduce((a, b) => a + b, 0) + rowGap * (cols.length - 1) : Math.max(...colBodyH));
         const blockH = bodyBlockH + Math.round(srcFs * 2);
         const bx = Math.min(Math.max(0, Math.round(captionPos.u * W)), Math.max(0, W - blockW));
         const by = Math.min(Math.max(0, Math.round(captionPos.v * H)), Math.max(0, H - blockH));
@@ -1910,24 +1943,36 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         ctx.shadowColor = captionColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.85)";
         ctx.shadowBlur = Math.round(L * 0.004);
         ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        // 本文カラム（colHasTitle のとき自前見出し付き）を (cx, top) に描く。
         const drawCol = (w: { title: string; lines: string[] }, cx: number, top: number) => {
           let ty = top;
           ctx.fillStyle = captionColor;
-          ctx.font = `700 ${titleFs}px ${ffTitle}`;
-          ctx.fillText(w.title, cx, ty + titleFs);
-          ty += titleLineH;
+          if (colHasTitle) {
+            ctx.font = `700 ${titleFs}px ${ffTitle}`;
+            ctx.fillText(w.title, cx, ty + titleFs);
+            ty += titleLineH;
+          }
           ctx.font = `400 ${bodyFs}px ${ffBody}`;
           for (const ln of w.lines) { ctx.fillText(ln, cx, ty + bodyFs); ty += lineH; }
         };
+        let ty = by;
+        // 共有見出し（全幅・上にまとめる）
+        if (sharedTitles.length) {
+          ctx.fillStyle = captionColor;
+          ctx.font = `700 ${titleFs}px ${ffTitle}`;
+          for (const t of sharedTitles) { ctx.fillText(t, bx, ty + titleFs); ty += titleLineH; }
+        }
+        // 本文（縦＝積む / 横＝左右に並べる）
         if (vertical) {
-          let ty = by;
           wrapped.forEach((w, ci) => {
+            if (ci > 0) ty += rowGap;
             drawCol(w, bx, ty);
-            ty += colHeights[ci] + rowGap;
+            ty += colBodyH[ci];
           });
         } else {
+          const top = ty;
           wrapped.forEach((w, ci) => {
-            drawCol(w, bx + (ci === 0 ? 0 : colWidths[0] + colGap), by);
+            drawCol(w, bx + (ci === 0 ? 0 : colWidths[0] + colGap), top);
           });
         }
         // 出典（1回、左下。少し薄く）
@@ -3005,17 +3050,21 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   onPointerMove={onEditMove}
                   onPointerUp={onEditUp}
                 >
-                  <div className={`ar-cap-cols${captionLang === "both" && captionLayout === "vertical" ? " is-vertical" : ""}`}>
+                  {/* 共有見出し（両方かつ each 以外。全幅で上にまとめる） */}
+                  {capSharedTitles.map((t, i) => (
+                    <div key={i} className="ar-caption-title">{t}</div>
+                  ))}
+                  <div className={`ar-cap-cols${capBoth && captionLayout === "vertical" ? " is-vertical" : ""}`}>
                     {(captionLang === "ja" || captionLang === "both") && arLabels[captionIdx].description && (
                       <div
                         className="ar-cap-col"
-                        style={captionLang === "both" && captionLayout === "horizontal" ? { flex: `${captionSplit} 1 0` } : undefined}
+                        style={capBoth && captionLayout === "horizontal" ? { flex: `${captionSplit} 1 0` } : undefined}
                       >
-                        <div className="ar-caption-title">{arLabels[captionIdx].name}</div>
+                        {capColHasTitle && <div className="ar-caption-title">{arLabels[captionIdx].name}</div>}
                         <p className="ar-caption-text">{arLabels[captionIdx].description}</p>
                       </div>
                     )}
-                    {captionLang === "both" && captionLayout === "horizontal" && arLabels[captionIdx].description && arLabels[captionIdx].descriptionEn && (
+                    {capBoth && captionLayout === "horizontal" && (
                       <div
                         className="ar-cap-divider"
                         title="日英の境界を動かす"
@@ -3027,9 +3076,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     {(captionLang === "en" || captionLang === "both") && arLabels[captionIdx].descriptionEn && (
                       <div
                         className="ar-cap-col"
-                        style={captionLang === "both" && captionLayout === "horizontal" ? { flex: `${1 - captionSplit} 1 0` } : undefined}
+                        style={capBoth && captionLayout === "horizontal" ? { flex: `${1 - captionSplit} 1 0` } : undefined}
                       >
-                        <div className="ar-caption-title">{arLabels[captionIdx].nameEn || arLabels[captionIdx].name}</div>
+                        {capColHasTitle && <div className="ar-caption-title">{arLabels[captionIdx].nameEn || arLabels[captionIdx].name}</div>}
                         <p className="ar-caption-text">{arLabels[captionIdx].descriptionEn}</p>
                       </div>
                     )}
@@ -3173,6 +3222,23 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                                   {lab}
                                 </button>
                               ))}
+                            </div>
+                          </div>
+                        )}
+                        {captionLang === "both" && (
+                          <div className="ar-fs-row">
+                            <span>見出し</span>
+                            <div className="ar-font-sel">
+                              <select
+                                value={captionTitleMode}
+                                onChange={(e) => setCaptionTitleMode(e.target.value as "each" | "stack" | "single" | "slash")}
+                                aria-label="見出しの出し方"
+                              >
+                                <option value="each">本文ごとに表示</option>
+                                <option value="stack">上にまとめる（日・英）</option>
+                                <option value="single">上に日本語だけ</option>
+                                <option value="slash">上に「日 / 英」</option>
+                              </select>
                             </div>
                           </div>
                         )}
