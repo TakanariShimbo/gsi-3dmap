@@ -252,14 +252,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [captionSplit, setCaptionSplit] = useState(0.5);
   // 山名ラベルを写真に焼き込むか（既定ON）。
   const [bakeLabels, setBakeLabels] = useState(true);
-  // 文字サイズ倍率（スライダーで連続調整）。
-  //  globalTextScale … 全体の一括倍率（通常ユーザーが触るメイン）。0.7〜2.0
-  //  titleTextScale  … 山名・タイトル系の補正。0.7〜2.0（詳細設定）
-  //  bodyTextScale   … 解説本文の補正。0.7〜1.6（詳細設定）
-  // 役割ごとの実サイズはテンプレート側で base × global × (title|body) と計算する。
-  const [globalTextScale, setGlobalTextScale] = useState(1);
-  const [titleTextScale, setTitleTextScale] = useState(1);
-  const [bodyTextScale, setBodyTextScale] = useState(1);
+  // 文字サイズ倍率（スライダーで連続調整）。役割ごとに独立。初期値はすべて 1.0。
+  //  labelScale        … 山名ラベルのサイズ。0.7〜2.0
+  //  captionTitleScale … 解説タイトルのサイズ。0.7〜2.0
+  //  captionBodyScale  … 解説本文（＋出典）のサイズ。0.7〜1.6
+  // 役割ごとの実サイズはテンプレート側で base × scale と計算する。
+  const [labelScale, setLabelScale] = useState(1);
+  const [captionTitleScale, setCaptionTitleScale] = useState(1);
+  const [captionBodyScale, setCaptionBodyScale] = useState(1);
   // 文字色。ラベルと解説で別々。
   const [labelColor, setLabelColor] = useState("#ffffff");
   const [captionColor, setCaptionColor] = useState("#ffffff");
@@ -1714,7 +1714,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, W, H);
-    const nameFs = Math.round(L * 0.026 * globalTextScale * titleTextScale); // 山名（大）＝タイトル系
+    const nameFs = Math.round(L * 0.026 * labelScale); // 山名（大）
     const subFs = Math.round(nameFs * 0.62); // Mt.ローマ字｜標高（小）
     const F = "system-ui, -apple-system, sans-serif";
     ctx.textBaseline = "alphabetic";
@@ -1764,9 +1764,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       if ((captionLang === "en" || captionLang === "both") && cap.descriptionEn)
         cols.push({ title: cap.nameEn || cap.name, body: cap.descriptionEn });
       if (cols.length) {
-        const titleFs = Math.round(L * 0.026 * globalTextScale * titleTextScale); // タイトル系
-        const bodyFs = Math.round(L * 0.02 * globalTextScale * bodyTextScale); // 本文系
-        const srcFs = Math.round(L * 0.013 * globalTextScale); // 注記（全体倍率のみ）
+        const titleFs = Math.round(L * 0.026 * captionTitleScale); // 解説タイトル
+        const bodyFs = Math.round(L * 0.02 * captionBodyScale); // 解説本文
+        const srcFs = Math.round(L * 0.013 * captionBodyScale); // 出典（本文に合わせる）
         const titleLineH = Math.round(titleFs * 1.3);
         const lineH = Math.round(bodyFs * 1.5);
         const blockW = Math.round(W * captionW);
@@ -2793,10 +2793,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
             onWheel={onStageWheel}
             style={
               {
-                "--label-fs": globalTextScale * titleTextScale, // 山名＝タイトル系
-                "--cap-title-fs": globalTextScale * titleTextScale, // 解説タイトル
-                "--cap-body-fs": globalTextScale * bodyTextScale, // 解説本文
-                "--cap-src-fs": globalTextScale, // 注記（全体倍率のみ）
+                "--label-fs": labelScale, // 山名ラベル
+                "--cap-title-fs": captionTitleScale, // 解説タイトル
+                "--cap-body-fs": captionBodyScale, // 解説本文
+                "--cap-src-fs": captionBodyScale, // 出典（本文に合わせる）
               } as React.CSSProperties
             }
           >
@@ -2988,35 +2988,53 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 {/* 焼き込み設定: 山名ラベル・解説の表示、解説の取り上げ山、共通の文字サイズ。 */}
                 {arLabels.length > 0 && (
                   <div className="ar-caption-ctrl">
-                    {/* === 山名ラベル === */}
-                    <label className="switch-row">
-                      <span>写真に山名を入れる</span>
-                      <input
-                        type="checkbox"
-                        className="switch"
-                        checked={bakeLabels}
-                        onChange={(e) => setBakeLabels(e.target.checked)}
-                      />
-                    </label>
-                    {bakeLabels && (
-                      <>
-                        <div className="ar-fs-row">
-                          <span>名前の色</span>
-                          <div className="seg" role="group" aria-label="名前の色">
-                            {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
-                              <button key={v} className={labelColor === v ? "is-active" : ""} onClick={() => setLabelColor(v)}>
-                                {lab}
-                              </button>
-                            ))}
+                    {/* === 山名ラベル（折りたたみ） === */}
+                    <details className="ar-sec" open>
+                      <summary>山名ラベル</summary>
+                      <label className="switch-row">
+                        <span>写真に山名を入れる</span>
+                        <input
+                          type="checkbox"
+                          className="switch"
+                          checked={bakeLabels}
+                          onChange={(e) => setBakeLabels(e.target.checked)}
+                        />
+                      </label>
+                      {bakeLabels && (
+                        <>
+                          <div className="ar-fs-row">
+                            <span>名前の色</span>
+                            <div className="seg" role="group" aria-label="名前の色">
+                              {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
+                                <button key={v} className={labelColor === v ? "is-active" : ""} onClick={() => setLabelColor(v)}>
+                                  {lab}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      </>
-                    )}
-                    {/* === 解説 === */}
+                          <div className="ar-fs-slider-row">
+                            <span>ラベルのサイズ</span>
+                            <span className="ar-fs-val">{Math.round(labelScale * 100)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            className="ar-fs-slider"
+                            min={0.7}
+                            max={2.0}
+                            step={0.05}
+                            value={labelScale}
+                            onChange={(e) => setLabelScale(Number(e.target.value))}
+                            aria-label="ラベルのサイズ"
+                          />
+                        </>
+                      )}
+                    </details>
+                    {/* === 解説（折りたたみ） === */}
                     {arLabels.some((l) => l.description) && (
-                      <>
+                      <details className="ar-sec" open>
+                        <summary>解説</summary>
                         <div className="ar-fs-row">
-                          <span>解説</span>
+                          <span>言語</span>
                           <div className="seg" role="group" aria-label="解説の言語">
                             {(
                               [
@@ -3059,57 +3077,38 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                                 ))}
                               </div>
                             </div>
+                            <div className="ar-fs-slider-row">
+                              <span>タイトルのサイズ</span>
+                              <span className="ar-fs-val">{Math.round(captionTitleScale * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              className="ar-fs-slider"
+                              min={0.7}
+                              max={2.0}
+                              step={0.05}
+                              value={captionTitleScale}
+                              onChange={(e) => setCaptionTitleScale(Number(e.target.value))}
+                              aria-label="解説タイトルのサイズ"
+                            />
+                            <div className="ar-fs-slider-row">
+                              <span>本文のサイズ</span>
+                              <span className="ar-fs-val">{Math.round(captionBodyScale * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              className="ar-fs-slider"
+                              min={0.7}
+                              max={1.6}
+                              step={0.05}
+                              value={captionBodyScale}
+                              onChange={(e) => setCaptionBodyScale(Number(e.target.value))}
+                              aria-label="解説本文のサイズ"
+                            />
                           </>
                         )}
-                      </>
+                      </details>
                     )}
-                    {/* === 文字サイズ（山名・解説で共通） === */}
-                    {/* 全体倍率を主操作にし、タイトル/本文のバランスは詳細設定で微調整。 */}
-                    <div className="ar-fs-slider-row">
-                      <span>文字サイズ</span>
-                      <span className="ar-fs-val">{Math.round(globalTextScale * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      className="ar-fs-slider"
-                      min={0.7}
-                      max={2.0}
-                      step={0.05}
-                      value={globalTextScale}
-                      onChange={(e) => setGlobalTextScale(Number(e.target.value))}
-                      aria-label="文字サイズ"
-                    />
-                    <details className="ar-adv">
-                      <summary>詳細設定</summary>
-                      <div className="ar-fs-slider-row">
-                        <span>タイトルサイズ</span>
-                        <span className="ar-fs-val">{Math.round(titleTextScale * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        className="ar-fs-slider"
-                        min={0.7}
-                        max={2.0}
-                        step={0.05}
-                        value={titleTextScale}
-                        onChange={(e) => setTitleTextScale(Number(e.target.value))}
-                        aria-label="タイトルサイズ"
-                      />
-                      <div className="ar-fs-slider-row">
-                        <span>解説サイズ</span>
-                        <span className="ar-fs-val">{Math.round(bodyTextScale * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        className="ar-fs-slider"
-                        min={0.7}
-                        max={1.6}
-                        step={0.05}
-                        value={bodyTextScale}
-                        onChange={(e) => setBodyTextScale(Number(e.target.value))}
-                        aria-label="解説サイズ"
-                      />
-                    </details>
                   </div>
                 )}
                 <div className="ar-dock-actions">
