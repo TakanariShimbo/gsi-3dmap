@@ -129,34 +129,33 @@ type ArLabel = {
 
 // 焼き込み文字の役割（サイズ・フォントを役割ごとに設定する単位）。
 type FontRole = "labelName" | "labelSub" | "captionTitle" | "captionBody";
-type FontLang = "jp" | "en";
-// 役割ごとに日本語(jp)/英語(en)のフォントファミリを持つ。
-type RoleFonts = Record<FontRole, Record<FontLang, string>>;
+// フォントは和文・欧文をセットにした「ペア」で選ぶ。
+type FontPairId = "gothic" | "rounded" | "mincho" | "script";
+type FontPair = { label: string; jp: string; en: string };
+// 役割ごとにフォントペアを1つ持つ。
+type RoleFonts = Record<FontRole, FontPairId>;
 
-// 選べる和文フォント（index.html で Google Fonts を読み込み）。
-const JP_FONTS: { label: string; value: string }[] = [
-  { label: "ゴシック", value: "Noto Sans JP" },
-  { label: "明朝", value: "Noto Serif JP" },
-  { label: "和風明朝", value: "Shippori Mincho" },
-];
-// 選べる欧文フォント。
-const EN_FONTS: { label: string; value: string }[] = [
-  { label: "Sans", value: "Noto Sans" },
-  { label: "Inter", value: "Inter" },
-  { label: "Serif", value: "Noto Serif" },
-  { label: "Garamond", value: "Cormorant Garamond" },
-  { label: "Montserrat", value: "Montserrat" },
-];
-// 初期フォント（全役割とも標準ゴシック相当）。
-const DEFAULT_ROLE_FONTS: RoleFonts = {
-  labelName: { jp: "Noto Sans JP", en: "Noto Sans" },
-  labelSub: { jp: "Noto Sans JP", en: "Inter" },
-  captionTitle: { jp: "Noto Sans JP", en: "Noto Sans" },
-  captionBody: { jp: "Noto Sans JP", en: "Noto Sans" },
+// 選べるフォントペア（和文＋欧文のセット。index.html で Google Fonts を読み込み）。
+const FONT_PAIRS: Record<FontPairId, FontPair> = {
+  gothic: { label: "ゴシック", jp: "Noto Sans JP", en: "Inter" },
+  rounded: { label: "丸ゴシック", jp: "M PLUS Rounded 1c", en: "Nunito" },
+  mincho: { label: "明朝", jp: "Noto Serif JP", en: "Noto Serif" },
+  script: { label: "筆記", jp: "Yuji Syuku", en: "Cormorant Garamond" },
 };
-// 役割のフォントを canvas/CSS 用のファミリ指定に展開する。
+const FONT_PAIR_IDS = Object.keys(FONT_PAIRS) as FontPairId[];
+// 初期フォント（全役割ともゴシック）。
+const DEFAULT_ROLE_FONTS: RoleFonts = {
+  labelName: "gothic",
+  labelSub: "gothic",
+  captionTitle: "gothic",
+  captionBody: "gothic",
+};
+// 役割のフォントペアを canvas/CSS 用のファミリ指定に展開する。
 // 欧文を先・和文を後に並べ、ラテン字は欧文フォント・CJKは和文フォントが当たるようにする。
-const roleFontStack = (rf: Record<FontLang, string>) => `"${rf.en}", "${rf.jp}", system-ui, sans-serif`;
+const roleFontStack = (id: FontPairId) => {
+  const p = FONT_PAIRS[id];
+  return `"${p.en}", "${p.jp}", system-ui, sans-serif`;
+};
 
 export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   // ar(写真)と live(カメラ) は、地点→向き→山選択→微調整 の流れを共有する（データ源だけ違う）。
@@ -293,39 +292,24 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [labelSubScale, setLabelSubScale] = useState(1);
   const [captionTitleScale, setCaptionTitleScale] = useState(1);
   const [captionBodyScale, setCaptionBodyScale] = useState(1);
-  // 役割ごとの日英フォント。山名/補足/タイトル/本文で個別に指定できる。
+  // 役割ごとのフォントペア（和文＋欧文セット）。山名/補足/タイトル/本文で個別に指定できる。
   const [roleFonts, setRoleFonts] = useState<RoleFonts>(DEFAULT_ROLE_FONTS);
-  const setRoleFont = (role: FontRole, lang: FontLang, value: string) =>
-    setRoleFonts((p) => ({ ...p, [role]: { ...p[role], [lang]: value } }));
-  // 役割の日英フォント選択行（和文・欧文の2セレクト）。
+  const setRoleFont = (role: FontRole, value: FontPairId) =>
+    setRoleFonts((p) => ({ ...p, [role]: value }));
+  // 役割のフォント選択行（和文＋欧文をまとめて選ぶ1セレクト）。
   const fontRow = (role: FontRole, label: string) => (
-    <>
-      <div className="ar-fs-slider-row">
-        <span>{label}</span>
+    <div className="ar-fs-row">
+      <span>{label}</span>
+      <div className="ar-font-sel">
+        <select value={roleFonts[role]} onChange={(e) => setRoleFont(role, e.target.value as FontPairId)} aria-label={label}>
+          {FONT_PAIR_IDS.map((id) => (
+            <option key={id} value={id}>
+              {FONT_PAIRS[id].label}
+            </option>
+          ))}
+        </select>
       </div>
-      <div className="ar-font-selects">
-        <label className="ar-font-sel">
-          <span>和文</span>
-          <select value={roleFonts[role].jp} onChange={(e) => setRoleFont(role, "jp", e.target.value)} aria-label={`${label}（和文）`}>
-            {JP_FONTS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="ar-font-sel">
-          <span>欧文</span>
-          <select value={roleFonts[role].en} onChange={(e) => setRoleFont(role, "en", e.target.value)} aria-label={`${label}（欧文）`}>
-            {EN_FONTS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </>
+    </div>
   );
   // 文字色。ラベルと解説で別々。
   const [labelColor, setLabelColor] = useState("#ffffff");
@@ -1790,14 +1774,15 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const ffBody = roleFontStack(roleFonts.captionBody);
     // canvas はフォント未ロードだと既定にフォールバックするため、使うフォントを先に読み込む。
     const fontLoads: Promise<unknown>[] = [];
-    for (const [w, rf] of [
+    for (const [w, id] of [
       [700, roleFonts.labelName],
       [500, roleFonts.labelSub],
       [700, roleFonts.captionTitle],
       [400, roleFonts.captionBody],
-    ] as [number, Record<FontLang, string>][]) {
-      fontLoads.push(document.fonts.load(`${w} 16px "${rf.jp}"`).catch(() => {}));
-      fontLoads.push(document.fonts.load(`${w} 16px "${rf.en}"`).catch(() => {}));
+    ] as [number, FontPairId][]) {
+      const p = FONT_PAIRS[id];
+      fontLoads.push(document.fonts.load(`${w} 16px "${p.jp}"`).catch(() => {}));
+      fontLoads.push(document.fonts.load(`${w} 16px "${p.en}"`).catch(() => {}));
     }
     await Promise.all(fontLoads);
     ctx.textBaseline = "alphabetic";

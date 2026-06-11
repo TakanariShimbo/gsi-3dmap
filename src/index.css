@@ -1950,29 +1950,16 @@ body,
   width: 100%;
   margin: 2px 0 2px;
 }
-/* フォント選択（和文・欧文の2セレクトを横並び）。 */
-.ar-font-selects {
-  display: flex;
-  gap: 8px;
-}
+/* フォント選択（役割ごとに和文＋欧文セットを1つ選ぶ）。 */
 .ar-font-sel {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
   padding: 4px 8px;
   background: rgba(40, 52, 68, 0.5);
   border: 1px solid rgba(130, 150, 175, 0.3);
   border-radius: 8px;
 }
-.ar-font-sel > span {
-  flex: none;
-  font-size: 11px;
-  color: #9fb0c4;
-}
 .ar-font-sel select {
-  flex: 1;
   min-width: 0;
   font-size: 12px;
   font-weight: 600;
