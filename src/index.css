@@ -1895,7 +1895,7 @@ body,
   border-radius: 50%;
 }
 .ar-caption-title {
-  font-size: calc(2.6cqmax * var(--cap-fs, 1)); /* 写真長辺の 2.6% × 倍率 */
+  font-size: calc(2.6cqmax * var(--cap-title-fs, 1)); /* 写真長辺の 2.6% × タイトル倍率 */
   font-weight: 700;
   display: flex;
   align-items: baseline;
@@ -1908,13 +1908,13 @@ body,
 }
 .ar-caption-text {
   margin: 0.35em 0 0;
-  font-size: calc(2cqmax * var(--cap-fs, 1));
+  font-size: calc(2cqmax * var(--cap-body-fs, 1));
   line-height: 1.5;
   color: inherit; /* 解説の色を本文にも適用 */
 }
 .ar-caption-src {
   margin-top: 0.4em;
-  font-size: calc(1.3cqmax * var(--cap-fs, 1));
+  font-size: calc(1.3cqmax * var(--cap-src-fs, 1));
   color: inherit;
   opacity: 0.78;
 }
@@ -1926,6 +1926,46 @@ body,
   gap: 10px;
   font-size: 13px;
   color: #cdd6e2;
+}
+/* 文字サイズスライダーの見出し行（ラベル左＋現在値%右） */
+.ar-fs-slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #cdd6e2;
+}
+.ar-fs-slider-row .ar-fs-val {
+  font-variant-numeric: tabular-nums;
+  color: #9fb0c4;
+}
+.ar-fs-slider {
+  width: 100%;
+  margin: 2px 0 2px;
+}
+/* 詳細設定（タイトル/解説サイズの微調整）。既定は畳む。 */
+.ar-adv {
+  margin-top: 2px;
+}
+.ar-adv > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #9fb0c4;
+  user-select: none;
+}
+.ar-adv > summary::-webkit-details-marker {
+  display: none;
+}
+.ar-adv > summary::before {
+  content: "▸ ";
+  font-size: 10px;
+}
+.ar-adv[open] > summary::before {
+  content: "▾ ";
 }
 /* 色ピッカー（ラベル/解説の文字色）。 */
 .ar-color {
