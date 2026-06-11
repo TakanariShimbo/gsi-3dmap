@@ -127,6 +127,9 @@ type ArLabel = {
   source?: string; // 参考URL
 };
 
+// ラベルの内容パターン（1段目=主名／2段目=補足の組み合わせ）。
+type LabelMode = "jaSubEnElev" | "jaSubEn" | "jaSubElev" | "enSubElev" | "jaOnly" | "enOnly";
+
 // 焼き込み文字の役割（サイズ・フォントを役割ごとに設定する単位）。
 type FontRole = "labelName" | "labelSub" | "captionTitle" | "captionBody";
 // フォントは和文・欧文をセットにした「ペア」で選ぶ。
@@ -311,6 +314,35 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const capSharedRow = captionTitleMode === "groupH";
   // 山名ラベルを写真に焼き込むか（既定ON）。
   const [bakeLabels, setBakeLabels] = useState(true);
+  // ラベルの内容パターン（1段目=主名／2段目=補足の組み合わせ）。
+  //  jaSubEnElev … 日本語名 ＋（英語名 | 標高）  ※現状
+  //  jaSubEn     … 日本語名 ＋ 英語名
+  //  jaSubElev   … 日本語名 ＋ 標高
+  //  enSubElev   … 英語名 ＋ 標高
+  //  jaOnly      … 日本語名のみ
+  //  enOnly      … 英語名のみ
+  const [labelMode, setLabelMode] = useState<LabelMode>("jaSubEnElev");
+  // ラベルの1段目（name）と2段目（sub）の文字列を labelMode から決める。sub が空なら1段目のみ。
+  const labelContent = (lb: { name: string; nameEn?: string; elevM: number }) => {
+    const ja = lb.name;
+    const en = lb.nameEn || lb.name;
+    const elev = `${Math.round(lb.elevM).toLocaleString()}m`;
+    switch (labelMode) {
+      case "jaOnly":
+        return { name: ja, sub: "" };
+      case "enOnly":
+        return { name: en, sub: "" };
+      case "jaSubElev":
+        return { name: ja, sub: elev };
+      case "enSubElev":
+        return { name: en, sub: elev };
+      case "jaSubEn":
+        return { name: ja, sub: en };
+      default: // jaSubEnElev（現状）
+        return { name: ja, sub: `${lb.nameEn ? lb.nameEn + " | " : ""}${elev}` };
+    }
+  };
+  const labelHasSub = labelMode !== "jaOnly" && labelMode !== "enOnly";
   // 文字サイズ倍率（スライダーで連続調整）。役割ごとに独立。初期値はすべて 1.0。
   //  labelNameScale    … ラベル1段目（山名）のサイズ。0.7〜2.0
   //  labelSubScale     … ラベル2段目（Mt.ローマ字｜標高）のサイズ。0.7〜1.6
@@ -1824,10 +1856,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         const dotY = lb.dotV * H;
         const cx = lb.labelU * W; // ラベルの基準（下端中央）
         const cy = lb.labelV * H;
-        const name = lb.name;
-        const sub = `${lb.nameEn ? lb.nameEn + " | " : ""}${Math.round(lb.elevM).toLocaleString()}m`;
+        const { name, sub } = labelContent(lb);
         const subBaseline = cy;
-        const nameBaseline = cy - Math.round(subFs * 1.35);
+        // 補足があれば1段目はその上、無ければ1段目を下端（cy）に置く。
+        const nameBaseline = sub ? cy - Math.round(subFs * 1.35) : cy;
         // リード線（ラベル下 → 山頂）。文字色に合わせる。点(頂点)は出力しない。
         // 両端は描かず、点と点の中心66%だけ実線（17%ずつ余白）。
         const ax = cx, ay = cy + Math.round(subFs * 0.3);
@@ -1849,8 +1881,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         ctx.fillStyle = labelColor;
         ctx.font = `700 ${nameFs}px ${ffName}`;
         ctx.fillText(name, cx, nameBaseline);
-        ctx.font = `500 ${subFs}px ${ffSub}`;
-        ctx.fillText(sub, cx, subBaseline);
+        if (sub) {
+          ctx.font = `500 ${subFs}px ${ffSub}`;
+          ctx.fillText(sub, cx, subBaseline);
+        }
         ctx.restore();
       }
     }
@@ -3048,30 +3082,30 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     </div>
                   ))}
                 </div>
-                {/* ラベル本体（文字・全不透明） */}
-                {arLabels.map((lb, i) => (
-                  <div
-                    key={i}
-                    className="ar-edit-label"
-                    style={
-                      {
-                        left: `${lb.labelU * 100}%`,
-                        top: `${lb.labelV * 100}%`,
-                        color: labelColor,
-                        "--label-sh": labelColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.82)",
-                      } as React.CSSProperties
-                    }
-                    onPointerDown={onEditDown(i, "label")}
-                    onPointerMove={onEditMove}
-                    onPointerUp={onEditUp}
-                  >
-                    <span className="ar-label-name">{lb.name}</span>
-                    <span className="ar-label-sub">
-                      {lb.nameEn ? `${lb.nameEn} | ` : ""}
-                      {Math.round(lb.elevM).toLocaleString()}m
-                    </span>
-                  </div>
-                ))}
+                {/* ラベル本体（文字・全不透明）。内容は labelMode に従う。 */}
+                {arLabels.map((lb, i) => {
+                  const lc = labelContent(lb);
+                  return (
+                    <div
+                      key={i}
+                      className="ar-edit-label"
+                      style={
+                        {
+                          left: `${lb.labelU * 100}%`,
+                          top: `${lb.labelV * 100}%`,
+                          color: labelColor,
+                          "--label-sh": labelColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.82)",
+                        } as React.CSSProperties
+                      }
+                      onPointerDown={onEditDown(i, "label")}
+                      onPointerMove={onEditMove}
+                      onPointerUp={onEditUp}
+                    >
+                      <span className="ar-label-name">{lc.name}</span>
+                      {lc.sub && <span className="ar-label-sub">{lc.sub}</span>}
+                    </div>
+                  );
+                })}
               </>
             )}
             {/* 解説（可動ブロック・背景なし）。言語モードで 日本語/英語/両方。両方は2カラム。 */}
@@ -3215,6 +3249,23 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                       {bakeLabels && (
                         <>
                           <div className="ar-fs-row">
+                            <span>表示</span>
+                            <div className="ar-font-sel">
+                              <select
+                                value={labelMode}
+                                onChange={(e) => setLabelMode(e.target.value as LabelMode)}
+                                aria-label="ラベルの表示内容"
+                              >
+                                <option value="jaSubEnElev">日本語名 ＋ 英語名・標高</option>
+                                <option value="jaSubEn">日本語名 ＋ 英語名</option>
+                                <option value="jaSubElev">日本語名 ＋ 標高</option>
+                                <option value="enSubElev">英語名 ＋ 標高</option>
+                                <option value="jaOnly">日本語名のみ</option>
+                                <option value="enOnly">英語名のみ</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="ar-fs-row">
                             <span>名前の色</span>
                             <div className="seg" role="group" aria-label="名前の色">
                               {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
@@ -3239,21 +3290,25 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                             aria-label="山名サイズ"
                           />
                           {fontRow("labelName", "山名フォント")}
-                          <div className="ar-fs-slider-row">
-                            <span>補足サイズ</span>
-                            <span className="ar-fs-val">{Math.round(labelSubScale * 100)}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            className="ar-fs-slider"
-                            min={0.7}
-                            max={1.6}
-                            step={0.05}
-                            value={labelSubScale}
-                            onChange={(e) => setLabelSubScale(Number(e.target.value))}
-                            aria-label="補足サイズ"
-                          />
-                          {fontRow("labelSub", "補足フォント")}
+                          {labelHasSub && (
+                            <>
+                              <div className="ar-fs-slider-row">
+                                <span>補足サイズ</span>
+                                <span className="ar-fs-val">{Math.round(labelSubScale * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                className="ar-fs-slider"
+                                min={0.7}
+                                max={1.6}
+                                step={0.05}
+                                value={labelSubScale}
+                                onChange={(e) => setLabelSubScale(Number(e.target.value))}
+                                aria-label="補足サイズ"
+                              />
+                              {fontRow("labelSub", "補足フォント")}
+                            </>
+                          )}
                         </>
                       )}
                     </details>
