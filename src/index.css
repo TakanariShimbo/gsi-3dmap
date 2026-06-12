@@ -2517,6 +2517,7 @@ body,
 }
 /* 写真の代わりの3D周回ビュー（ヒーロー） */
 .zukan-orbit {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: 52vh;
@@ -2525,8 +2526,32 @@ body,
   border: 1px solid rgba(130, 150, 175, 0.3);
   background: #0a0d12;
 }
+.zukan-orbit-canvas {
+  position: absolute;
+  inset: 0;
+}
 .zukan-orbit canvas {
   display: block;
+}
+/* 読み込み幕。最初の約2秒はタイル読込のカクつきを隠し、ふわっと開ける。 */
+.zukan-orbit-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #9fb0c4;
+  background:
+    radial-gradient(640px 360px at 50% 30%, rgba(60, 90, 140, 0.28), transparent 70%),
+    #0b0f15;
+  opacity: 1;
+  transition: opacity 0.7s ease;
+}
+.zukan-orbit-loading.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 .zukan-detail-head h1 {
   margin: 0;

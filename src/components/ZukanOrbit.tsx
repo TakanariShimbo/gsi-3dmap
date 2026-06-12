@@ -1,7 +1,7 @@
 // 図鑑の詳細ページ用ヒーロー3Dビュー。写真の代わりに、山頂のまわりを
 // ゆっくり周回し続けるカメラで実地形（QuadtreeTerrain）を映す。
 // MapView とは独立した小さな専用エンジン（自前 renderer/scene/ループ）。
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
 import { elevToWorldY, lonToMercX, latToMercY, mercXToWorld, mercYToWorld } from "../lib/mercator";
@@ -14,6 +14,15 @@ type Props = {
 
 export default function ZukanOrbit({ lat, lon, elevationM }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  // 表示直後はタイル読込でカクつくので、約2秒はローディング幕で隠す
+  // （裏では描画・読込を続け、幕が開いた時にはそれまでに読めた地形が映る）。
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setReady(false);
+    const t = window.setTimeout(() => setReady(true), 2000);
+    return () => window.clearTimeout(t);
+  }, [lat, lon, elevationM]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -80,5 +89,14 @@ export default function ZukanOrbit({ lat, lon, elevationM }: Props) {
     };
   }, [lat, lon, elevationM]);
 
-  return <div ref={mountRef} className="zukan-orbit" aria-label="山の3Dビュー（自動周回）" />;
+  return (
+    <div className="zukan-orbit" aria-label="山の3Dビュー（自動周回）">
+      {/* canvas は appendChild で挿すので、React 管理の子（ローディング幕）とは div を分ける */}
+      <div ref={mountRef} className="zukan-orbit-canvas" />
+      <div className={`zukan-orbit-loading${ready ? " is-hidden" : ""}`} aria-hidden={ready}>
+        <span className="spinner" />
+        <span>3D地形を読み込み中…</span>
+      </div>
+    </div>
+  );
 }
