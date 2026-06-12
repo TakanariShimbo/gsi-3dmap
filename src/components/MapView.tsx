@@ -3121,10 +3121,6 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               )}
               {/* セクションはタブで1つだけ表示 */}
               {dockTabs(`ar-${arStep}`, [
-                viewTab,
-                (arStep === "locate" && appMode !== "live") || arStep === "select"
-                  ? { id: "search", label: <><IconSearch size={13} /> 検索</>, content: searchPanel }
-                  : null,
                 arStep === "params"
                   ? {
                       id: "params",
@@ -3158,6 +3154,12 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                       ),
                     }
                   : null,
+                // 検索（地点・山選択・向き画角）。フェーズ2は2番目に配置。
+                arStep === "select" || arStep === "params" || (arStep === "locate" && appMode !== "live")
+                  ? { id: "search", label: <><IconSearch size={13} /> 検索</>, content: searchPanel }
+                  : null,
+                // ARは「操作」を末尾に。
+                viewTab,
               ])}
               {/* 進行ボタン（最下部） */}
               {arStep === "locate" && (
@@ -3454,22 +3456,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     ? `「編集」で名札・解説をドラッグ配置、「画像」で写真をパン・拡大（切替で誤操作を防止）。解説の言語・幅・文字サイズも下で調整できます（${arLabels.length}件）。`
                     : "写真の枠内に山がありません。前の手順に戻り、向きを合わせ直してください。",
                 )}
-                {/* 操作（編集/画像＋ズーム）・ラベル・解説 をタブで1つだけ表示。 */}
+                {/* ラベル・解説・操作（編集/画像＋ズーム）をタブで1つだけ表示。ARは操作を末尾に。 */}
                 {dockTabs("arexport", [
-                  {
-                    id: "view",
-                    label: (
-                      <>
-                        <IconMove size={13} /> 操作
-                      </>
-                    ),
-                    content: (
-                      <div className="stage-controls">
-                        {exportModeToggle}
-                        {stageZoomControls}
-                      </div>
-                    ),
-                  },
                   arLabels.length > 0
                     ? {
                       id: "label",
@@ -3712,7 +3700,21 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                           ),
                         }
                       : null,
-                  ])}
+                  {
+                    id: "view",
+                    label: (
+                      <>
+                        <IconMove size={13} /> 操作
+                      </>
+                    ),
+                    content: (
+                      <div className="stage-controls">
+                        {exportModeToggle}
+                        {stageZoomControls}
+                      </div>
+                    ),
+                  },
+                ])}
                 <div className="ar-dock-actions">
                   <button
                     className="ar-btn-sub ar-btn--icon"
@@ -3826,21 +3828,6 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               ])
             : dockTabs("align", [
                 {
-                  id: "view",
-                  label: <><IconMove size={13} /> 操作</>,
-                  content: (
-                    <>
-                      {arLike && arStep === "align" && (
-                        <div className="stage-controls">
-                          {editModeToggle}
-                          {stageZoomControls}
-                        </div>
-                      )}
-                      {dockControls}
-                    </>
-                  ),
-                },
-                {
                   id: "cam",
                   label: <><IconCamera size={13} /> カメラ設定</>,
                   content: (
@@ -3873,6 +3860,22 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                           `${Math.round(photoOpacity * 100)}%`,
                           <input type="range" min={0} max={100} value={Math.round(photoOpacity * 100)} onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)} />,
                         )}
+                    </>
+                  ),
+                },
+                // ARは「操作」を末尾に。
+                {
+                  id: "view",
+                  label: <><IconMove size={13} /> 操作</>,
+                  content: (
+                    <>
+                      {arLike && arStep === "align" && (
+                        <div className="stage-controls">
+                          {editModeToggle}
+                          {stageZoomControls}
+                        </div>
+                      )}
+                      {dockControls}
                     </>
                   ),
                 },
