@@ -2596,6 +2596,15 @@ body,
   line-height: 1.9;
   color: #d7e0ec;
 }
+/* 英語解説（日本語の下）。区切り線＋少し控えめのトーン。 */
+.zukan-desc--en {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(130, 150, 175, 0.18);
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: #b9c6d8;
+}
 .zukan-src {
   margin: 0;
   font-size: 12px;

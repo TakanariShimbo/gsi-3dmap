@@ -157,6 +157,7 @@ export default function Zukan({ onHome }: Props) {
             </div>
           )}
           {selected.descriptionJa && <p className="zukan-desc">{selected.descriptionJa}</p>}
+          {selected.descriptionEn && <p className="zukan-desc zukan-desc--en">{selected.descriptionEn}</p>}
           {selected.url && (
             <p className="zukan-src">
               出典・参考:{" "}

@@ -112,6 +112,7 @@ export type ZukanEntry = {
   titleEn?: string; // 英名（例: Mt. Fuji）
   descriptionJa?: string; // 解説（長め）
   descriptionShortJa?: string; // 解説（短め。カード用）
+  descriptionEn?: string; // 英語解説（長め。詳細ページで日本語の下に出す）
   tags: string[]; // タグ（日本語）
   url?: string; // 参考URL
 };
@@ -133,6 +134,7 @@ export async function loadZukanEntries(): Promise<ZukanEntry[]> {
       titleEn: d?.title_en,
       descriptionJa: d?.description_ja_long,
       descriptionShortJa: d?.description_ja_short,
+      descriptionEn: d?.description_en_long,
       tags: d?.tags_ja ?? [],
       url: d?.url,
     };
