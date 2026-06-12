@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { QuadtreeTerrain } from "../terrain/QuadtreeTerrain";
@@ -22,6 +22,7 @@ import {
   IconCube,
   IconGrid,
   IconEye,
+  IconInfo,
   IconCaret,
   IconMove,
   IconAll,
@@ -148,11 +149,39 @@ const PREF_EN: Record<string, string> = {
 const prefEn = (pref: string) =>
   pref.split("/").map((p) => PREF_EN[p.trim()] ?? p.trim().replace(/[県府都道]$/, "")).join(" / ");
 
+// "#ffffff" / "#aabbcc" など hex を "r,g,b" に変換（rgba 生成用）。
+const hexToRgb = (hex: string): string => {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16) || 0;
+  const g = parseInt(m.slice(2, 4), 16) || 0;
+  const b = parseInt(m.slice(4, 6), 16) || 0;
+  return `${r},${g},${b}`;
+};
+// 文字色が暗色か（相対輝度<0.5）。影・パネル・タグの反対色を決めるのに使う。
+const isDarkColor = (hex: string): boolean => {
+  const [r, g, b] = hexToRgb(hex).split(",").map(Number);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+};
+// 文字の縁取り影の色（暗色文字→白影 / 明色文字→黒影）。dark=明色文字時の黒影の濃さ。
+const contrastShadow = (textColor: string, dark = 0.82): string =>
+  isDarkColor(textColor) ? "rgba(255,255,255,0.5)" : `rgba(0,0,0,${dark})`;
+// タグ（ピル）の背景（文字色の反対色・半透明）。
+const tagBg = (textColor: string): string =>
+  isDarkColor(textColor) ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.4)";
+
 // 背景パネルの塗り色（文字色の反対色・半透明）。
 type BgPanel = "none" | "translucent";
 const panelFill = (textColor: string) =>
-  textColor !== "#000000" ? "rgba(17,21,29,0.42)" : "rgba(255,255,255,0.55)"; // 白文字→濃色 / 黒文字→淡色
-const panelStroke = (textColor: string) => (textColor !== "#000000" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)");
+  isDarkColor(textColor) ? "rgba(255,255,255,0.55)" : "rgba(17,21,29,0.42)"; // 暗色文字→淡色 / 明色文字→濃色
+const panelStroke = (textColor: string) => (isDarkColor(textColor) ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.14)");
+
+// ふち（フェード）の S字イージング停止点。t=0(写真の縁,不透明)→t=1(内側,透明)。
+// 線形だと両端で傾きが折れて「マッハバンド」になり、余白側の境界が浮く。
+// smoothstep(3t²−2t³) で両端の傾きを 0 にし、折れ目を消す。
+const FADE_STOPS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1].map((t) => ({
+  t,
+  a: 1 - (3 * t * t - 2 * t * t * t), // t=0→1（不透明）, t=1→0（透明）
+}));
 
 // ラベルの内容パターン（1段目=主名／2段目=補足の組み合わせ）。
 type LabelMode = "jaSubEnElev" | "jaSubEn" | "jaSubElev" | "enSubElev" | "jaOnly" | "enOnly";
@@ -424,10 +453,11 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const box = labelBoxes[i] ?? { w: 0, h: 0 };
     const { h: ph, v: pv } = labelFramePad;
     const anchor = lb?.labelAnchor ?? "bottom";
-    if (anchor === "top") return { x: lb.labelU, y: lb.labelV - box.h - pv };
-    if (anchor === "left") return { x: lb.labelU - box.w / 2 - ph, y: lb.labelV - box.h / 2 };
-    if (anchor === "right") return { x: lb.labelU + box.w / 2 + ph, y: lb.labelV - box.h / 2 };
-    return { x: lb.labelU, y: lb.labelV + pv }; // bottom（枠の下辺）
+    const c = photoToFrame(lb.labelU, lb.labelV); // 写真座標 → フレーム座標（辺オフセットはフレーム単位）
+    if (anchor === "top") return { x: c.u, y: c.v - box.h - pv };
+    if (anchor === "left") return { x: c.u - box.w / 2 - ph, y: c.v - box.h / 2 };
+    if (anchor === "right") return { x: c.u + box.w / 2 + ph, y: c.v - box.h / 2 };
+    return { x: c.u, y: c.v + pv }; // bottom（枠の下辺）
   };
   // 文字サイズ倍率（スライダーで連続調整）。役割ごとに独立。初期値はすべて 1.0。
   //  labelNameScale    … ラベル1段目（山名）のサイズ。0.7〜2.0
@@ -464,6 +494,17 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   // 文字色。ラベルと解説で別々。
   const [labelColor, setLabelColor] = useState("#ffffff");
   const [captionColor, setCaptionColor] = useState("#ffffff");
+  // 文字の縁取り影（ありなし）。ラベルと解説で別々。
+  const [labelShadow, setLabelShadow] = useState(true);
+  const [captionShadow, setCaptionShadow] = useState(true);
+  // タグ（ピル）の色と、その色を背景／文字どちらに使うか。
+  const [tagColor, setTagColor] = useState("#3f6fb0");
+  const [tagColorTarget, setTagColorTarget] = useState<"bg" | "text">("bg");
+  // タグの塗り分け。背景に使うとき＝文字は可読な反対色／文字に使うとき＝背景は反対色の半透明。
+  const pillColors = () =>
+    tagColorTarget === "bg"
+      ? { bg: tagColor, fg: isDarkColor(tagColor) ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.85)" }
+      : { bg: tagBg(tagColor), fg: tagColor };
   // 背景パネル（なし / 半透明 / 不透明）。ラベルと解説で別々。背景色は文字色の反対色。
   const [labelBg, setLabelBg] = useState<BgPanel>("none");
   const [captionBg, setCaptionBg] = useState<BgPanel>("none");
@@ -472,8 +513,6 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [frameMargin, setFrameMargin] = useState({ t: 0, r: 0, b: 0, l: 0 }); // 余白（切り抜き後の辺長に対する割合）
   const [frameMarginColor, setFrameMarginColor] = useState("#ffffff"); // 余白の色（白/黒）
   const [frameFade, setFrameFade] = useState(0); // ふち：余白のある辺で写真を余白色へぼかす幅（切り抜き後の辺長に対する割合）
-  const [cropEditMode, setCropEditMode] = useState(false); // 切り抜き調整モード（フル写真＋枠ドラッグ）
-  const cropDragRef = useRef<string | null>(null); // ドラッグ中の切り抜きハンドル（l/r/t/b/tl/tr/bl/br）
   // 解説ブロックの配置（写真フレーム内の正規化座標。ブロック左上）。ドラッグで移動。
   const [captionPos, setCaptionPos] = useState({ u: 0.05, v: 0.62 });
   const captionDragRef = useRef<{ offU: number; offV: number } | null>(null); // 解説ドラッグの掴み位置
@@ -500,6 +539,18 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const fMlr = frameMargin.l + frameMargin.r;
   const fMtb = frameMargin.t + frameMargin.b;
   const fAnyMargin = fMtb > 0 || fMlr > 0;
+  // 点・ラベル・解説の座標は「写真（切り抜き前の元写真）正規化」で保持する。
+  // クロップ/余白で写真がフレーム内を動いても山頂の点が追従するよう、描画時にフレーム座標へ変換する。
+  // 既定（切り抜き0・余白0）では恒等変換（写真=フレーム）。
+  const photoToFrame = (pu: number, pv: number) => ({
+    u: (frameMargin.l + (pu - cropInset.l) / fCwF) / (1 + fMlr),
+    v: (frameMargin.t + (pv - cropInset.t) / fChF) / (1 + fMtb),
+  });
+  // 逆変換（ドラッグ＝フレーム座標 → 保持する写真座標）。
+  const frameToPhoto = (fu: number, fv: number) => ({
+    u: cropInset.l + (fu * (1 + fMlr) - frameMargin.l) * fCwF,
+    v: cropInset.t + (fv * (1 + fMtb) - frameMargin.t) * fChF,
+  });
   const fPhotoAR = photoNat ? photoNat.w / photoNat.h : 1;
   const frameAR = fPhotoAR * (fCwF / fChF) * ((1 + fMlr) / (1 + fMtb)); // 出力枠アスペクト
   const framePhotoStyle: React.CSSProperties = {
@@ -520,13 +571,16 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   // ふち（フェード）。余白のある辺だけ、写真領域の内側へ frameFade ぶん余白色へ溶かす。
   const fadeStyle = (dir: "t" | "b" | "l" | "r"): React.CSSProperties | null => {
     if (frameFade <= 0 || frameMargin[dir] <= 0) return null;
-    const c = frameMarginColor;
+    const rgb = hexToRgb(frameMarginColor);
     const pct = `${frameFade * 100}%`;
+    // S字イージングの停止点で、写真の縁（不透明）→内側（透明）をなめらかに繋ぐ。
+    const stops = FADE_STOPS.map(({ t, a }) => `rgba(${rgb},${a.toFixed(3)}) ${(t * 100).toFixed(1)}%`).join(", ");
+    const grad = (toDir: string) => `linear-gradient(${toDir}, ${stops})`;
     const base: React.CSSProperties = { position: "absolute", pointerEvents: "none" };
-    if (dir === "t") return { ...base, left: 0, right: 0, top: 0, height: pct, background: `linear-gradient(to bottom, ${c}, transparent)` };
-    if (dir === "b") return { ...base, left: 0, right: 0, bottom: 0, height: pct, background: `linear-gradient(to top, ${c}, transparent)` };
-    if (dir === "l") return { ...base, top: 0, bottom: 0, left: 0, width: pct, background: `linear-gradient(to right, ${c}, transparent)` };
-    return { ...base, top: 0, bottom: 0, right: 0, width: pct, background: `linear-gradient(to left, ${c}, transparent)` };
+    if (dir === "t") return { ...base, left: 0, right: 0, top: 0, height: pct, background: grad("to bottom") };
+    if (dir === "b") return { ...base, left: 0, right: 0, bottom: 0, height: pct, background: grad("to top") };
+    if (dir === "l") return { ...base, top: 0, bottom: 0, left: 0, width: pct, background: grad("to right") };
+    return { ...base, top: 0, bottom: 0, right: 0, width: pct, background: grad("to left") };
   };
   const arDragRef = useRef<{ i: number; kind: "dot" | "label" | "labelAnchor" | "caption" | "capResize" | "capSplit" } | null>(null); // ドラッグ中の対象
   // AR下部パネルの折りたたみ/移動（縦画像や地図を見やすくするため）。
@@ -1962,6 +2016,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const mT = Math.round(frameMargin.t * chR), mB = Math.round(frameMargin.b * chR);
     const mL = Math.round(frameMargin.l * cwR), mR = Math.round(frameMargin.r * cwR);
     const OW = cwR + mL + mR, OH = chR + mT + mB; // 出力枠（ラベル位置・文字サイズの基準）
+    // 写真正規化座標 → 出力枠ピクセル。点・ラベル・解説は写真にアンカーされているので、
+    // 描いた写真の矩形(mL..mL+cwR, mT..mT+chR)に合わせて配置し、クロップ/余白に追従させる。
+    const pfx = (pu: number) => mL + ((pu - cropInset.l) / fCwF) * cwR;
+    const pfy = (pv: number) => mT + ((pv - cropInset.t) / fChF) * chR;
     const L = Math.max(OW, OH); // 文字サイズは出力枠の長辺基準（プレビューの cqmax と一致）
     const canvas = document.createElement("canvas");
     canvas.width = OW;
@@ -1976,11 +2034,11 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     // ふち: 余白のある辺で、写真を余白色へぼかす（写真側へ frameFade ぶん）。
     if (frameFade > 0 && (mT || mB || mL || mR)) {
       const fh = Math.round(frameFade * chR), fw = Math.round(frameFade * cwR);
-      const rgba = (a: number) => (frameMarginColor === "#000000" ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`);
+      const rgba = (a: number) => `rgba(${hexToRgb(frameMarginColor)},${a})`;
       const fade = (x0: number, y0: number, x1: number, y1: number, x: number, y: number, w: number, h: number) => {
         const g = ctx.createLinearGradient(x0, y0, x1, y1);
-        g.addColorStop(0, rgba(1));
-        g.addColorStop(1, rgba(0));
+        // S字イージング（smoothstep）。線形の折れ目をなくし、余白側の境界の浮きを消す。
+        for (const { t, a } of FADE_STOPS) g.addColorStop(t, rgba(a));
         ctx.fillStyle = g;
         ctx.fillRect(x, y, w, h);
       };
@@ -2028,10 +2086,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     ctx.textBaseline = "alphabetic";
     if (bakeLabels) {
       for (const lb of arLabels) {
-        const dotX = lb.dotU * OW;
-        const dotY = lb.dotV * OH;
-        const cx = lb.labelU * OW; // ラベルの基準（下端中央。出力枠基準）
-        const cy = lb.labelV * OH;
+        const dotX = pfx(lb.dotU);
+        const dotY = pfy(lb.dotV);
+        const cx = pfx(lb.labelU); // ラベルの基準（下端中央。写真にアンカー）
+        const cy = pfy(lb.labelV);
         const { name, sub } = labelContent(lb);
         const subBaseline = cy;
         // 補足があれば1段目はその上、無ければ1段目を下端（cy）に置く。
@@ -2067,11 +2125,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         if (labelBg !== "none") {
           drawPanel(cx - boxW / 2 - padH, boxTop - padV, boxW + padH * 2, boxBottom - boxTop + padV * 2, Math.round(L * 0.011), labelColor);
         }
-        // 文字（中央揃え・影は文字色の反対色で可読性確保。黒文字の白影は控えめ）
+        // 文字（中央揃え・影は文字色の反対色で可読性確保。暗色文字の白影は控えめ）
         ctx.save();
-        ctx.shadowColor = labelColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.82)";
-        ctx.shadowBlur = Math.round(L * 0.0035);
-        ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        if (labelShadow) {
+          ctx.shadowColor = contrastShadow(labelColor);
+          ctx.shadowBlur = Math.round(L * 0.0035);
+          ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        }
         ctx.textAlign = "center";
         ctx.fillStyle = labelColor;
         ctx.font = `700 ${nameFs}px ${ffName}`;
@@ -2198,7 +2258,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
           if (!rows.length) return;
           ctx.save();
           ctx.shadowColor = "transparent";
-          const bg = captionColor === "#000000" ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.4)";
+          const { bg, fg } = pillColors();
           let yy = top;
           for (const row of rows) {
             let xx = x;
@@ -2207,7 +2267,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
               ctx.beginPath();
               ctx.roundRect(xx, yy, w, tagPillH, tagRadius);
               ctx.fill();
-              ctx.fillStyle = captionColor;
+              ctx.fillStyle = fg;
               ctx.font = tagFont;
               ctx.textBaseline = "middle";
               ctx.fillText(t, xx + tagPadX, yy + tagPillH / 2);
@@ -2244,18 +2304,20 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
           sharedBelow +
           (vertical ? colBodyH.reduce((a, b) => a + b, 0) + rowGap * (cols.length - 1) : Math.max(...colBodyH));
         const blockH = bodyBlockH;
-        const bx = Math.min(Math.max(0, Math.round(captionPos.u * OW)), Math.max(0, OW - blockW));
-        const by = Math.min(Math.max(0, Math.round(captionPos.v * OH)), Math.max(0, OH - blockH));
+        const bx = Math.min(Math.max(0, Math.round(pfx(captionPos.u))), Math.max(0, OW - blockW));
+        const by = Math.min(Math.max(0, Math.round(pfy(captionPos.v))), Math.max(0, OH - blockH));
         // 背景パネル（本文ブロックの下に敷く）。
         if (captionBg !== "none") {
           const px = Math.round(L * 0.018), py = Math.round(L * 0.015);
           drawPanel(bx - px, by - py, blockW + px * 2, bodyBlockH + py * 2, Math.round(L * 0.016), captionColor);
         }
-        // 影で可読性を確保。影は文字色の反対色（黒文字の白影は控えめ）。
+        // 影で可読性を確保。影は文字色の反対色（暗色文字の白影は控えめ）。
         ctx.save();
-        ctx.shadowColor = captionColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.85)";
-        ctx.shadowBlur = Math.round(L * 0.004);
-        ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        if (captionShadow) {
+          ctx.shadowColor = contrastShadow(captionColor, 0.85);
+          ctx.shadowBlur = Math.round(L * 0.004);
+          ctx.shadowOffsetY = Math.max(1, Math.round(L * 0.001));
+        }
         // 本文カラム（colHasTitle のとき自前見出し＋タグ付き）を (cx, top) に描く。
         const drawCol = (ci: number, cx: number, top: number) => {
           const w = wrapped[ci];
@@ -2397,7 +2459,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       const r = stage.getBoundingClientRect();
       const pu = (e.clientX - r.left) / r.width;
       const pv = (e.clientY - r.top) / r.height;
-      captionDragRef.current = { offU: pu - captionPos.u, offV: pv - captionPos.v };
+      const cf = photoToFrame(captionPos.u, captionPos.v); // 保持は写真座標→フレームでズレを取る
+      captionDragRef.current = { offU: pu - cf.u, offV: pv - cf.v };
     }
     arDragRef.current = { i: -1, kind: "caption" };
   };
@@ -2416,12 +2479,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
           ? "b"
           : "r";
     const r = arFrameRef.current?.getBoundingClientRect();
+    const cf = photoToFrame(captionPos.u, captionPos.v); // フレーム座標で辺位置を扱う
     capResizeRef.current = {
       side,
       startW: captionW,
       startV: r ? (e.clientY - r.top) / r.height : 0,
-      boxLeft: captionPos.u,
-      boxRight: captionPos.u + captionW,
+      boxLeft: cf.u,
+      boxRight: cf.u + captionW,
     };
     arDragRef.current = { i: -1, kind: "capResize" };
   };
@@ -2466,12 +2530,11 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
     if (d.kind === "caption") {
       const off = captionDragRef.current ?? { offU: 0, offV: 0 };
-      // ブロック幅(captionW)ぶん、フレーム内に収める。
+      // ブロック幅(captionW)ぶん、フレーム内に収める（クランプはフレーム座標）。
       const maxU = Math.max(0, 1 - captionW);
-      setCaptionPos({
-        u: Math.min(maxU, Math.max(0, u - off.offU)),
-        v: Math.min(0.82, Math.max(0, v - off.offV)),
-      });
+      const fU = Math.min(maxU, Math.max(0, u - off.offU));
+      const fV = Math.min(0.82, Math.max(0, v - off.offV));
+      setCaptionPos(frameToPhoto(fU, fV)); // 保持は写真座標（クロップ/余白に追従）
       return;
     }
     if (d.kind === "capResize") {
@@ -2482,7 +2545,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
         setCaptionW(Math.min(1 - rz.boxLeft, Math.max(MINW, u - rz.boxLeft)));
       } else if (rz.side === "l") {
         const newLeft = Math.min(rz.boxRight - MINW, Math.max(0, u));
-        setCaptionPos((p) => ({ ...p, u: newLeft }));
+        setCaptionPos((p) => ({ ...p, u: frameToPhoto(newLeft, 0).u }));
         setCaptionW(rz.boxRight - newLeft);
       } else if (rz.side === "b") {
         // 下へ引く=縦に伸びる=幅が狭まる（行数増）。上端は固定。
@@ -2490,63 +2553,39 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       } else {
         // top: 上端が指に追従しつつ、上へ引くほど幅が狭まる（縦に伸びる）。
         const newTop = Math.min(0.9, Math.max(0, v));
-        setCaptionPos((p) => ({ ...p, v: newTop }));
+        setCaptionPos((p) => ({ ...p, v: frameToPhoto(0, newTop).v }));
         setCaptionW(Math.min(1 - rz.boxLeft, Math.max(MINW, rz.startW - (rz.startV - v) * 1.4)));
       }
       return;
     }
     if (d.kind === "capSplit") {
-      // 日英の境界。左=日本語の割合。
-      setCaptionSplit(Math.min(0.8, Math.max(0.2, (u - captionPos.u) / Math.max(0.001, captionW))));
+      // 日英の境界。左=日本語の割合（captionPos は写真座標→フレームで比較）。
+      const cfu = photoToFrame(captionPos.u, captionPos.v).u;
+      setCaptionSplit(Math.min(0.8, Math.max(0.2, (u - cfu) / Math.max(0.001, captionW))));
       return;
     }
     if (d.kind === "labelAnchor") {
       // 引き出し線の起点（ラベルの辺）を切り替える。指の位置がラベル中心から見て近い辺にスナップ。
       const lb = arLabels[d.i];
       const box = labelBoxes[d.i] ?? { w: 0, h: 0 };
-      const cxn = lb.labelU;
-      const cyn = lb.labelV - box.h / 2; // ラベル中心
+      const c = photoToFrame(lb.labelU, lb.labelV); // フレーム座標でラベル中心を求める
+      const cxn = c.u;
+      const cyn = c.v - box.h / 2; // ラベル中心
       const dx = (u - cxn) / Math.max(1e-4, box.w / 2);
       const dy = (v - cyn) / Math.max(1e-4, box.h / 2);
       const side = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : dy < 0 ? "top" : "bottom";
       setArLabels((prev) => prev.map((l, idx) => (idx !== d.i ? l : { ...l, labelAnchor: side })));
       return;
     }
+    const p = frameToPhoto(u, v); // ドラッグ＝フレーム座標 → 保持する写真座標
     setArLabels((prev) =>
       prev.map((lb, idx) =>
-        idx !== d.i ? lb : d.kind === "dot" ? { ...lb, dotU: u, dotV: v } : { ...lb, labelU: u, labelV: v },
+        idx !== d.i ? lb : d.kind === "dot" ? { ...lb, dotU: p.u, dotV: p.v } : { ...lb, labelU: p.u, labelV: p.v },
       ),
     );
   };
   const onEditUp = () => {
     arDragRef.current = null;
-  };
-  // 切り抜き調整モードの枠ハンドルドラッグ。フル写真上(=写真正規化座標)で各辺を動かす。
-  const onCropHandleDown = (edge: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    cropDragRef.current = edge;
-  };
-  const onCropMove = (e: React.PointerEvent) => {
-    const edge = cropDragRef.current;
-    const stage = arEditStageRef.current;
-    if (!edge || !stage) return;
-    const r = stage.getBoundingClientRect();
-    const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    const GAP = 0.08; // 反対辺と最低これだけ空ける
-    setCropInset((p) => {
-      let { l, t, r: rr, b } = p;
-      if (edge.includes("l")) l = Math.min(u, 1 - rr - GAP);
-      if (edge.includes("r")) rr = Math.min(1 - u, 1 - l - GAP);
-      if (edge.includes("t")) t = Math.min(v, 1 - b - GAP);
-      if (edge.includes("b")) b = Math.min(1 - v, 1 - t - GAP);
-      return { l: Math.max(0, l), t: Math.max(0, t), r: Math.max(0, rr), b: Math.max(0, b) };
-    });
-  };
-  const onCropUp = () => {
-    cropDragRef.current = null;
   };
   // 出力枠(フレーム)を、外枠(ステージ)内に「contain」で収める px サイズに設定。
   useLayoutEffect(() => {
@@ -2657,9 +2696,15 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     const py = e.clientY;
     const ox = arDockOffset.x;
     const oy = arDockOffset.y;
+    // ドラッグ開始時のパネル上端（=グリップ）の画面Y。グリップが画面内に残るよう上下とも制限する。
+    const panel = (e.currentTarget as HTMLElement).parentElement;
+    const startTop = panel ? panel.getBoundingClientRect().top : 0;
+    const TOP_MARGIN = 8; // 画面上端からの最小マージン（グリップは必ず見える）
+    const minY = oy + (TOP_MARGIN - startTop); // これ以上 上へは動かせない
+    const maxY = oy + (window.innerHeight - 60 - startTop); // これ以上 下へは動かせない（グリップ分は残す）
     const move = (ev: PointerEvent) => {
       const x = Math.max(-window.innerWidth / 2 + 60, Math.min(window.innerWidth / 2 - 60, ox + (ev.clientX - px)));
-      const y = Math.max(-(window.innerHeight - 180), Math.min(0, oy + (ev.clientY - py)));
+      const y = Math.max(minY, Math.min(maxY, oy + (ev.clientY - py)));
       setArDockOffset({ x, y });
     };
     const up = () => {
@@ -2671,6 +2716,43 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
+
+  // 下アンカーのパネルが上へ伸びて画面外へはみ出したら、下げてグリップを画面内に戻す保険。
+  // 収まる時は y=0（最下部の定位置）へ戻す。展開/タブ切替によるサイズ変化を ResizeObserver で検知。
+  const dockElRef = useRef<HTMLDivElement | null>(null);
+  const dockObsRef = useRef<ResizeObserver | null>(null);
+  const keepDockOnScreen = useCallback(() => {
+    const el = dockElRef.current;
+    if (!el) return;
+    const TOP_MARGIN = 8;
+    setArDockOffset((o) => {
+      const rect = el.getBoundingClientRect();
+      const naturalTop = rect.top - o.y; // y=0 のときの上端
+      const targetY = naturalTop < TOP_MARGIN ? TOP_MARGIN - naturalTop : 0;
+      return Math.abs(targetY - o.y) < 0.5 ? o : { ...o, y: targetY };
+    });
+  }, []);
+  // パネルのルートに付けるコールバック ref。サイズ変化を監視して上記を発火。
+  const dockRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      dockObsRef.current?.disconnect();
+      dockElRef.current = el;
+      if (el && typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => keepDockOnScreen());
+        ro.observe(el);
+        dockObsRef.current = ro;
+      }
+    },
+    [keepDockOnScreen],
+  );
+  // cam-hud は写真枠の予約高さ計算で arHudRef も使うので、両方にセットする。
+  const camHudRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      arHudRef.current = el;
+      dockRef(el);
+    },
+    [dockRef],
+  );
 
   // AR/ライブの進行表示（1〜5）。ドック・カメラHUD・出力編集の各下部パネルで使い回す。
   const arStepsBar =
@@ -3057,6 +3139,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   // 操作行（地図/カメラ・3D/2D・現在地・撮影地点へ 等）。タブ「操作」の中身に使う。
   // 折りたたみ帯をやめ、タブで1項目だけ表示する。アナウンスはタイトルなし本文のみ。
   const announce = (text: React.ReactNode) => <p className="dock-announce">{text}</p>;
+  // 折りたたみセクション（コモン/メイン/タグ など）。非制御の <details>（既定は畳む）。
+  // React は変化のない open プロップを再適用しないので、スライダー操作の再描画でも開閉状態は保たれる。
+  const arSec = (key: string, title: string, children: React.ReactNode) => (
+    <details key={key} className="ar-sec">
+      <summary>{title}</summary>
+      {children}
+    </details>
+  );
   type DockTab = { id: string; label: React.ReactNode; content: React.ReactNode };
   // パネル内のセクションをタブ化（key ごとに選択を保持）。1項目だけのときはタブ列を出さない。
   const dockTabs = (key: string, tabs: (DockTab | false | null | undefined)[]) => {
@@ -3229,6 +3319,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       {arLike && (arStep === "locate" || arStep === "params" || arStep === "select") && (
         <div
           className="ar-dock"
+          ref={dockRef}
           style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
         >
           <div
@@ -3429,8 +3520,9 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 <svg className="ar-edit-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
                   {arLabels.map((lb, i) => {
                     const sp = labelSidePoint(i);
+                    const dp = photoToFrame(lb.dotU, lb.dotV);
                     const ax = sp.x * 100, ay = sp.y * 100;
-                    const bx = lb.dotU * 100, by = lb.dotV * 100;
+                    const bx = dp.u * 100, by = dp.v * 100;
                     return (
                       <line
                         key={i}
@@ -3452,13 +3544,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   <svg className="ar-edit-guides" viewBox="0 0 100 100" preserveAspectRatio="none">
                     {arLabels.map((lb, i) => {
                       const sp = labelSidePoint(i);
+                      const dp = photoToFrame(lb.dotU, lb.dotV);
                       return (
                         <line
                           key={i}
                           x1={sp.x * 100}
                           y1={sp.y * 100}
-                          x2={lb.dotU * 100}
-                          y2={lb.dotV * 100}
+                          x2={dp.u * 100}
+                          y2={dp.v * 100}
                           stroke="rgb(143,194,255)"
                           strokeWidth={1.2}
                           vectorEffect="non-scaling-stroke"
@@ -3468,12 +3561,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   </svg>
                   {arLabels.map((lb, i) => {
                     const sp = labelSidePoint(i);
+                    const dp = photoToFrame(lb.dotU, lb.dotV);
                     return (
                       <div key={i}>
                         {/* 山頂側のアンカー点（ドラッグで山頂位置を調整） */}
                         <div
                           className="ar-edit-dot"
-                          style={{ left: `${lb.dotU * 100}%`, top: `${lb.dotV * 100}%` }}
+                          style={{ left: `${dp.u * 100}%`, top: `${dp.v * 100}%` }}
                           onPointerDown={onEditDown(i, "dot")}
                           onPointerMove={onEditMove}
                           onPointerUp={onEditUp}
@@ -3493,6 +3587,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 {/* ラベル本体（文字・全不透明）。内容は labelMode に従う。 */}
                 {arLabels.map((lb, i) => {
                   const lc = labelContent(lb);
+                  const lp = photoToFrame(lb.labelU, lb.labelV);
                   return (
                     <div
                       key={i}
@@ -3500,10 +3595,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                       data-idx={i}
                       style={
                         {
-                          left: `${lb.labelU * 100}%`,
-                          top: `${lb.labelV * 100}%`,
+                          left: `${lp.u * 100}%`,
+                          top: `${lp.v * 100}%`,
                           color: labelColor,
-                          "--label-sh": labelColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.82)",
+                          "--label-sh": labelShadow ? contrastShadow(labelColor) : "transparent",
                           ...(labelBg !== "none"
                             ? {
                                 "--label-panel-bg": panelFill(labelColor),
@@ -3531,12 +3626,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   className={`ar-caption${captionBg !== "none" ? " has-panel" : ""}`}
                   style={
                     {
-                      left: `${captionPos.u * 100}%`,
-                      top: `${captionPos.v * 100}%`,
+                      left: `${photoToFrame(captionPos.u, captionPos.v).u * 100}%`,
+                      top: `${photoToFrame(captionPos.u, captionPos.v).v * 100}%`,
                       width: `${captionW * 100}%`,
                       color: captionColor,
-                      "--cap-sh": captionColor === "#000000" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.85)",
-                      "--cap-tag-bg": captionColor === "#000000" ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.4)",
+                      "--cap-sh": captionShadow ? contrastShadow(captionColor, 0.85) : "transparent",
+                      "--cap-tag-bg": pillColors().bg,
+                      "--cap-tag-fg": pillColors().fg,
                       ...(captionBg !== "none"
                         ? {
                             "--cap-panel-bg": panelFill(captionColor),
@@ -3615,41 +3711,10 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 </div>
               )}
             </div>
-            {/* 切り抜き調整モード: フル写真＋ドラッグ枠を上に被せる */}
-            {cropEditMode && photoUrl && (
-              <div
-                className="ar-crop-edit"
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerMove={onCropMove}
-                onPointerUp={onCropUp}
-                onPointerCancel={onCropUp}
-              >
-                <img className="ar-edit-photo" src={photoUrl} alt="" draggable={false} />
-                <div
-                  className="ar-crop-rect"
-                  style={{
-                    left: `${cropInset.l * 100}%`,
-                    top: `${cropInset.t * 100}%`,
-                    right: `${cropInset.r * 100}%`,
-                    bottom: `${cropInset.b * 100}%`,
-                  }}
-                >
-                  {(["tl", "t", "tr", "l", "r", "bl", "b", "br"] as const).map((h) => (
-                    <span
-                      key={h}
-                      className={`ar-crop-h ar-crop-h--${h}`}
-                      onPointerDown={onCropHandleDown(h)}
-                      onPointerMove={onCropMove}
-                      onPointerUp={onCropUp}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
           <div
             className="cam-hud"
-            ref={arHudRef}
+            ref={camHudRef}
             style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
           >
             <div
@@ -3668,6 +3733,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
             </div>
             {arPanelOpen && (
               <>
+                <div className="cam-hud-body">
                 {announce(
                   arLabels.length > 0
                     ? `「編集」で名札・解説をドラッグ配置、「画像」で写真をパン・拡大（切替で誤操作を防止）。解説の言語・幅・文字サイズも下で調整できます（${arLabels.length}件）。`
@@ -3677,305 +3743,359 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 {dockTabs("arexport", [
                   arLabels.length > 0
                     ? {
-                        id: "labelContent",
-                        label: "ラベル内容",
-                        content: (
+                        id: "label",
+                        label: (
                           <>
-                            <label className="switch-row">
-                              <span>写真に山名を入れる</span>
-                              <input
-                                type="checkbox"
-                                className="switch"
-                                checked={bakeLabels}
-                                onChange={(e) => setBakeLabels(e.target.checked)}
-                              />
-                            </label>
-                            {bakeLabels && (
-                              <div className="ar-fs-row">
-                                <span>表示</span>
-                                <div className="ar-font-sel">
-                                  <select
-                                    value={labelMode}
-                                    onChange={(e) => setLabelMode(e.target.value as LabelMode)}
-                                    aria-label="ラベルの表示内容"
-                                  >
-                                    <option value="jaSubEnElev">日本語名 ＋ 英語名・標高</option>
-                                    <option value="jaSubEn">日本語名 ＋ 英語名</option>
-                                    <option value="jaSubElev">日本語名 ＋ 標高</option>
-                                    <option value="enSubElev">英語名 ＋ 標高</option>
-                                    <option value="jaOnly">日本語名のみ</option>
-                                    <option value="enOnly">英語名のみ</option>
-                                  </select>
-                                </div>
-                              </div>
-                            )}
+                            <IconMountain size={13} /> 山名
                           </>
                         ),
-                      }
-                    : null,
-                  arLabels.length > 0 && bakeLabels
-                    ? {
-                        id: "labelStyle",
-                        label: "ラベル表示",
                         content: (
                           <>
-                            <div className="ar-fs-row">
-                              <span>背景パネル</span>
-                              <div className="seg" role="group" aria-label="背景パネル">
-                                {([["なし", "none"], ["半透明", "translucent"]] as [string, BgPanel][]).map(([lab, v]) => (
-                                  <button key={v} className={labelBg === v ? "is-active" : ""} onClick={() => setLabelBg(v)}>
-                                    {lab}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="ar-fs-row">
-                              <span>名前の色</span>
-                              <div className="seg" role="group" aria-label="名前の色">
-                                {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
-                                  <button key={v} className={labelColor === v ? "is-active" : ""} onClick={() => setLabelColor(v)}>
-                                    {lab}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="ar-fs-slider-row">
-                              <span>山名サイズ</span>
-                              <span className="ar-fs-val">{Math.round(labelNameScale * 100)}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              className="ar-fs-slider"
-                              min={0.7}
-                              max={2.0}
-                              step={0.05}
-                              value={labelNameScale}
-                              onChange={(e) => setLabelNameScale(Number(e.target.value))}
-                              aria-label="山名サイズ"
-                            />
-                            {fontRow("labelName", "山名フォント")}
-                            {labelHasSub && (
+                            {arSec(
+                              "label-common",
+                              "コモン",
                               <>
-                                <div className="ar-fs-slider-row">
-                                  <span>補足サイズ</span>
-                                  <span className="ar-fs-val">{Math.round(labelSubScale * 100)}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  className="ar-fs-slider"
-                                  min={0.7}
-                                  max={1.6}
-                                  step={0.05}
-                                  value={labelSubScale}
-                                  onChange={(e) => setLabelSubScale(Number(e.target.value))}
-                                  aria-label="補足サイズ"
-                                />
-                                {fontRow("labelSub", "補足フォント")}
-                              </>
+                                <label className="switch-row">
+                                  <span>写真に山名を入れる</span>
+                                  <input
+                                    type="checkbox"
+                                    className="switch"
+                                    checked={bakeLabels}
+                                    onChange={(e) => setBakeLabels(e.target.checked)}
+                                  />
+                                </label>
+                                {bakeLabels && (
+                                  <>
+                                    <div className="ar-fs-row">
+                                      <span>表示</span>
+                                      <div className="ar-font-sel">
+                                        <select
+                                          value={labelMode}
+                                          onChange={(e) => setLabelMode(e.target.value as LabelMode)}
+                                          aria-label="ラベルの表示内容"
+                                        >
+                                          <option value="jaSubEnElev">日本語名 ＋ 英語名・標高</option>
+                                          <option value="jaSubEn">日本語名 ＋ 英語名</option>
+                                          <option value="jaSubElev">日本語名 ＋ 標高</option>
+                                          <option value="enSubElev">英語名 ＋ 標高</option>
+                                          <option value="jaOnly">日本語名のみ</option>
+                                          <option value="enOnly">英語名のみ</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                    <div className="ar-fs-row">
+                                      <span>背景パネル</span>
+                                      <div className="seg" role="group" aria-label="背景パネル">
+                                        {([["なし", "none"], ["半透明", "translucent"]] as [string, BgPanel][]).map(([lab, v]) => (
+                                          <button key={v} className={labelBg === v ? "is-active" : ""} onClick={() => setLabelBg(v)}>
+                                            {lab}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="ar-fs-row">
+                                      <span>文字の色</span>
+                                      <input
+                                        type="color"
+                                        className="ar-color-input"
+                                        value={labelColor}
+                                        onChange={(e) => setLabelColor(e.target.value)}
+                                        aria-label="文字の色"
+                                      />
+                                    </div>
+                                    <label className="switch-row">
+                                      <span>文字の影</span>
+                                      <input
+                                        type="checkbox"
+                                        className="switch"
+                                        checked={labelShadow}
+                                        onChange={(e) => setLabelShadow(e.target.checked)}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+                              </>,
                             )}
+                            {bakeLabels &&
+                              arSec(
+                                "label-main",
+                                "メイン（山名）",
+                                <>
+                                  <div className="ar-fs-slider-row">
+                                    <span>山名サイズ</span>
+                                    <span className="ar-fs-val">{Math.round(labelNameScale * 100)}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    className="ar-fs-slider"
+                                    min={0.7}
+                                    max={2.0}
+                                    step={0.05}
+                                    value={labelNameScale}
+                                    onChange={(e) => setLabelNameScale(Number(e.target.value))}
+                                    aria-label="山名サイズ"
+                                  />
+                                  {fontRow("labelName", "山名フォント")}
+                                </>,
+                              )}
+                            {bakeLabels &&
+                              labelHasSub &&
+                              arSec(
+                                "label-sub",
+                                "サブ（補足）",
+                                <>
+                                  <div className="ar-fs-slider-row">
+                                    <span>補足サイズ</span>
+                                    <span className="ar-fs-val">{Math.round(labelSubScale * 100)}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    className="ar-fs-slider"
+                                    min={0.7}
+                                    max={1.6}
+                                    step={0.05}
+                                    value={labelSubScale}
+                                    onChange={(e) => setLabelSubScale(Number(e.target.value))}
+                                    aria-label="補足サイズ"
+                                  />
+                                  {fontRow("labelSub", "補足フォント")}
+                                </>,
+                              )}
                           </>
                         ),
                       }
                     : null,
                   arLabels.some((l) => l.description)
                     ? {
-                        id: "descContent",
-                        label: "解説内容",
-                        content: (
+                        id: "desc",
+                        label: (
                           <>
-                            <div className="ar-fs-row">
-                              <span>言語</span>
-                              <div className="seg" role="group" aria-label="解説の言語">
-                                {(
-                                  [
-                                    ["日本語", "ja"],
-                                    ["英語", "en"],
-                                    ["両方", "both"],
-                                    ["なし", "none"],
-                                  ] as [string, "ja" | "en" | "both" | "none"][]
-                                ).map(([lab, v]) => (
-                                  <button key={v} className={captionLang === v ? "is-active" : ""} onClick={() => setCaptionLang(v)}>
-                                    {lab}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            {captionLang !== "none" && (
-                              <div className="ar-fs-row">
-                                <span>長さ</span>
-                                <div className="seg" role="group" aria-label="解説の長さ">
-                                  {([["短め", "short"], ["長め", "long"]] as [string, "short" | "long"][]).map(([lab, v]) => (
-                                    <button key={v} className={captionLength === v ? "is-active" : ""} onClick={() => setCaptionLength(v)}>
-                                      {lab}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {captionLang !== "none" && (
-                              <>
-                                <div className="ar-fs-row">
-                                  <span>タグ</span>
-                                </div>
-                                <div className="ar-caption-pick">
-                                  <button className={`ar-cap-chip${capShowElev ? " is-on" : ""}`} onClick={() => setCapShowElev((v) => !v)}>
-                                    高さ
-                                  </button>
-                                  <button className={`ar-cap-chip${capShowLoc ? " is-on" : ""}`} onClick={() => setCapShowLoc((v) => !v)}>
-                                    場所
-                                  </button>
-                                  {(capItem?.tagsJa ?? []).map((t) => (
-                                    <button
-                                      key={t}
-                                      className={`ar-cap-chip${capSelectedTags.includes(t) ? " is-on" : ""}`}
-                                      onClick={() => toggleCapTag(t)}
-                                    >
-                                      {t}
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                            {bakeCaption && arLabels.filter((l) => l.description).length > 1 && (
-                              <>
-                                <div className="ar-fs-row">
-                                  <span>取り上げる山</span>
-                                </div>
-                                <div className="ar-caption-pick">
-                                  {arLabels.map((l, i) =>
-                                    l.description ? (
-                                      <button
-                                        key={i}
-                                        className={`ar-cap-chip${i === captionIdx ? " is-on" : ""}`}
-                                        onClick={() => setCaptionIdx(i)}
-                                      >
-                                        {l.name}
-                                      </button>
-                                    ) : null,
-                                  )}
-                                </div>
-                              </>
-                            )}
+                            <IconInfo size={13} /> 解説
                           </>
                         ),
-                      }
-                    : null,
-                  arLabels.some((l) => l.description) && bakeCaption
-                    ? {
-                        id: "descStyle",
-                        label: "解説表示",
                         content: (
                           <>
-                            {captionLang === "both" && (
-                              <div className="ar-fs-row">
-                                <span>並べ方</span>
-                                <div className="seg" role="group" aria-label="日英の並べ方">
-                                  {([["横", "horizontal"], ["縦", "vertical"]] as [string, "horizontal" | "vertical"][]).map(([lab, v]) => (
-                                    <button key={v} className={captionLayout === v ? "is-active" : ""} onClick={() => setCaptionLayout(v)}>
-                                      {lab}
+                            {arSec(
+                              "desc-common",
+                              "コモン",
+                              <>
+                                <div className="ar-fs-row">
+                                  <span>言語</span>
+                                  <div className="seg" role="group" aria-label="解説の言語">
+                                    {(
+                                      [
+                                        ["日本語", "ja"],
+                                        ["英語", "en"],
+                                        ["両方", "both"],
+                                        ["なし", "none"],
+                                      ] as [string, "ja" | "en" | "both" | "none"][]
+                                    ).map(([lab, v]) => (
+                                      <button key={v} className={captionLang === v ? "is-active" : ""} onClick={() => setCaptionLang(v)}>
+                                        {lab}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {captionLang === "both" && (
+                                  <div className="ar-fs-row">
+                                    <span>並べ方</span>
+                                    <div className="seg" role="group" aria-label="日英の並べ方">
+                                      {([["横", "horizontal"], ["縦", "vertical"]] as [string, "horizontal" | "vertical"][]).map(([lab, v]) => (
+                                        <button key={v} className={captionLayout === v ? "is-active" : ""} onClick={() => setCaptionLayout(v)}>
+                                          {lab}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {captionLang === "both" && (
+                                  <div className="ar-fs-row">
+                                    <span>見出し</span>
+                                    <div className="ar-font-sel">
+                                      <select
+                                        value={captionTitleMode}
+                                        onChange={(e) => setCaptionTitleMode(e.target.value as "each" | "groupV" | "groupH" | "ja" | "en")}
+                                        aria-label="見出しの出し方"
+                                      >
+                                        <option value="each">本文ごと</option>
+                                        <option value="groupV">まとめる（上下）</option>
+                                        <option value="groupH">まとめる（左右）</option>
+                                        <option value="ja">日本語のみ</option>
+                                        <option value="en">英語のみ</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                )}
+                                {bakeCaption && (
+                                  <>
+                                    <div className="ar-fs-row">
+                                      <span>背景パネル</span>
+                                      <div className="seg" role="group" aria-label="背景パネル">
+                                        {([["なし", "none"], ["半透明", "translucent"]] as [string, BgPanel][]).map(([lab, v]) => (
+                                          <button key={v} className={captionBg === v ? "is-active" : ""} onClick={() => setCaptionBg(v)}>
+                                            {lab}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="ar-fs-row">
+                                      <span>文字の色</span>
+                                      <input
+                                        type="color"
+                                        className="ar-color-input"
+                                        value={captionColor}
+                                        onChange={(e) => setCaptionColor(e.target.value)}
+                                        aria-label="文字の色"
+                                      />
+                                    </div>
+                                    <label className="switch-row">
+                                      <span>文字の影</span>
+                                      <input
+                                        type="checkbox"
+                                        className="switch"
+                                        checked={captionShadow}
+                                        onChange={(e) => setCaptionShadow(e.target.checked)}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+                                {bakeCaption && arLabels.filter((l) => l.description).length > 1 && (
+                                  <>
+                                    <div className="ar-fs-row">
+                                      <span>取り上げる山</span>
+                                    </div>
+                                    <div className="ar-caption-pick">
+                                      {arLabels.map((l, i) =>
+                                        l.description ? (
+                                          <button
+                                            key={i}
+                                            className={`ar-cap-chip${i === captionIdx ? " is-on" : ""}`}
+                                            onClick={() => setCaptionIdx(i)}
+                                          >
+                                            {l.name}
+                                          </button>
+                                        ) : null,
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+                              </>,
+                            )}
+                            {bakeCaption &&
+                              arSec(
+                                "desc-main",
+                                "タイトル",
+                                <>
+                                  <div className="ar-fs-slider-row">
+                                    <span>タイトルサイズ</span>
+                                    <span className="ar-fs-val">{Math.round(captionTitleScale * 100)}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    className="ar-fs-slider"
+                                    min={0.7}
+                                    max={2.0}
+                                    step={0.05}
+                                    value={captionTitleScale}
+                                    onChange={(e) => setCaptionTitleScale(Number(e.target.value))}
+                                    aria-label="解説タイトルサイズ"
+                                  />
+                                  {fontRow("captionTitle", "タイトルフォント")}
+                                </>,
+                              )}
+                            {captionLang !== "none" &&
+                              arSec(
+                                "desc-tag",
+                                "タグ",
+                                <>
+                                  <div className="ar-caption-pick">
+                                    <button className={`ar-cap-chip${capShowElev ? " is-on" : ""}`} onClick={() => setCapShowElev((v) => !v)}>
+                                      高さ
                                     </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {captionLang === "both" && (
-                              <div className="ar-fs-row">
-                                <span>見出し</span>
-                                <div className="ar-font-sel">
-                                  <select
-                                    value={captionTitleMode}
-                                    onChange={(e) => setCaptionTitleMode(e.target.value as "each" | "groupV" | "groupH" | "ja" | "en")}
-                                    aria-label="見出しの出し方"
-                                  >
-                                    <option value="each">本文ごと</option>
-                                    <option value="groupV">まとめる（上下）</option>
-                                    <option value="groupH">まとめる（左右）</option>
-                                    <option value="ja">日本語のみ</option>
-                                    <option value="en">英語のみ</option>
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                            <div className="ar-fs-row">
-                              <span>背景パネル</span>
-                              <div className="seg" role="group" aria-label="背景パネル">
-                                {([["なし", "none"], ["半透明", "translucent"]] as [string, BgPanel][]).map(([lab, v]) => (
-                                  <button key={v} className={captionBg === v ? "is-active" : ""} onClick={() => setCaptionBg(v)}>
-                                    {lab}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="ar-fs-row">
-                              <span>解説の色</span>
-                              <div className="seg" role="group" aria-label="解説の色">
-                                {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
-                                  <button key={v} className={captionColor === v ? "is-active" : ""} onClick={() => setCaptionColor(v)}>
-                                    {lab}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="ar-fs-slider-row">
-                              <span>タイトルサイズ</span>
-                              <span className="ar-fs-val">{Math.round(captionTitleScale * 100)}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              className="ar-fs-slider"
-                              min={0.7}
-                              max={2.0}
-                              step={0.05}
-                              value={captionTitleScale}
-                              onChange={(e) => setCaptionTitleScale(Number(e.target.value))}
-                              aria-label="解説タイトルサイズ"
-                            />
-                            {fontRow("captionTitle", "タイトルフォント")}
-                            <div className="ar-fs-slider-row">
-                              <span>本文サイズ</span>
-                              <span className="ar-fs-val">{Math.round(captionBodyScale * 100)}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              className="ar-fs-slider"
-                              min={0.7}
-                              max={1.6}
-                              step={0.05}
-                              value={captionBodyScale}
-                              onChange={(e) => setCaptionBodyScale(Number(e.target.value))}
-                              aria-label="解説本文サイズ"
-                            />
-                            {fontRow("captionBody", "本文フォント")}
+                                    <button className={`ar-cap-chip${capShowLoc ? " is-on" : ""}`} onClick={() => setCapShowLoc((v) => !v)}>
+                                      場所
+                                    </button>
+                                    {(capItem?.tagsJa ?? []).map((t) => (
+                                      <button
+                                        key={t}
+                                        className={`ar-cap-chip${capSelectedTags.includes(t) ? " is-on" : ""}`}
+                                        onClick={() => toggleCapTag(t)}
+                                      >
+                                        {t}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="ar-fs-row">
+                                    <span>タグの色</span>
+                                    <input
+                                      type="color"
+                                      className="ar-color-input"
+                                      value={tagColor}
+                                      onChange={(e) => setTagColor(e.target.value)}
+                                      aria-label="タグの色"
+                                    />
+                                  </div>
+                                  <div className="ar-fs-row">
+                                    <span>色の使い方</span>
+                                    <div className="seg" role="group" aria-label="タグの色の使い方">
+                                      {([["背景", "bg"], ["文字", "text"]] as [string, "bg" | "text"][]).map(([lab, v]) => (
+                                        <button key={v} className={tagColorTarget === v ? "is-active" : ""} onClick={() => setTagColorTarget(v)}>
+                                          {lab}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </>,
+                              )}
+                            {bakeCaption &&
+                              arSec(
+                                "desc-sub",
+                                "ディスクリプション",
+                                <>
+                                  <div className="ar-fs-row">
+                                    <span>長さ</span>
+                                    <div className="seg" role="group" aria-label="解説の長さ">
+                                      {([["短め", "short"], ["長め", "long"]] as [string, "short" | "long"][]).map(([lab, v]) => (
+                                        <button key={v} className={captionLength === v ? "is-active" : ""} onClick={() => setCaptionLength(v)}>
+                                          {lab}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="ar-fs-slider-row">
+                                    <span>本文サイズ</span>
+                                    <span className="ar-fs-val">{Math.round(captionBodyScale * 100)}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    className="ar-fs-slider"
+                                    min={0.7}
+                                    max={1.6}
+                                    step={0.05}
+                                    value={captionBodyScale}
+                                    onChange={(e) => setCaptionBodyScale(Number(e.target.value))}
+                                    aria-label="解説本文サイズ"
+                                  />
+                                  {fontRow("captionBody", "本文フォント")}
+                                </>,
+                              )}
                           </>
                         ),
                       }
                     : null,
                   {
-                    id: "frame",
-                    label: "フレーム",
+                    id: "crop",
+                    label: (
+                      <>
+                        <IconImage size={13} /> 切抜
+                      </>
+                    ),
                     content: (
                       <>
-                        <button
-                          className={`ar-follow-toggle${cropEditMode ? " is-on" : ""}`}
-                          onClick={() => setCropEditMode((v) => !v)}
-                        >
-                          <IconImage size={14} />
-                          {cropEditMode ? "切り抜き調整を終了（枠をドラッグ中）" : "切り抜きを枠でドラッグ調整"}
-                        </button>
-                        <div className="ar-fs-row">
-                          <span>余白の色</span>
-                          <div className="seg" role="group" aria-label="余白の色">
-                            {([["白", "#ffffff"], ["黒", "#000000"]] as [string, string][]).map(([lab, v]) => (
-                              <button key={v} className={frameMarginColor === v ? "is-active" : ""} onClick={() => setFrameMarginColor(v)}>
-                                {lab}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                         {(["t", "b", "l", "r"] as const).map((d) => (
                           <div key={`crop-${d}`}>
                             <div className="ar-fs-slider-row">
-                              <span>{`切り抜き ${{ t: "上", b: "下", l: "左", r: "右" }[d]}`}</span>
+                              <span>{`切抜 ${{ t: "上", b: "下", l: "左", r: "右" }[d]}`}</span>
                               <span className="ar-fs-val">{Math.round(cropInset[d] * 100)}%</span>
                             </div>
                             <input
@@ -3989,6 +4109,28 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                             />
                           </div>
                         ))}
+                      </>
+                    ),
+                  },
+                  {
+                    id: "margin",
+                    label: (
+                      <>
+                        <IconGrid size={13} /> 余白
+                      </>
+                    ),
+                    content: (
+                      <>
+                        <div className="ar-fs-row">
+                          <span>余白の色</span>
+                          <input
+                            type="color"
+                            className="ar-color-input"
+                            value={frameMarginColor}
+                            onChange={(e) => setFrameMarginColor(e.target.value)}
+                            aria-label="余白の色"
+                          />
+                        </div>
                         {(["t", "b", "l", "r"] as const).map((d) => (
                           <div key={`margin-${d}`}>
                             <div className="ar-fs-slider-row">
@@ -3999,7 +4141,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                               type="range"
                               className="ar-fs-slider"
                               min={0}
-                              max={0.6}
+                              max={1.2}
                               step={0.01}
                               value={frameMargin[d]}
                               onChange={(e) => setFrameMargin((p) => ({ ...p, [d]: Number(e.target.value) }))}
@@ -4037,6 +4179,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     ),
                   },
                 ])}
+                </div>
                 <div className="ar-dock-actions">
                   <button
                     className="ar-btn-sub ar-btn--icon"
@@ -4098,7 +4241,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       {mode === "camera" && !(appMode === "ar" && arStep === "export") && (
         <div
           className="cam-hud"
-          ref={arHudRef}
+          ref={camHudRef}
           style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
         >
           <div
@@ -4118,6 +4261,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
           </div>
           {arPanelOpen && (
           <>
+          <div className="cam-hud-body">
           {/* アナウンス（タイトル直下） */}
           {simView
             ? announce("ドラッグで見回します。ホイール／ピンチで画角、「地図」で俯瞰に戻れます。")
@@ -4202,6 +4346,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                   ),
                 },
               ])}
+          </div>
           {/* 進行ボタン（最下部） */}
           {appMode === "ar" && arStep === "align" && (
             <div className="ar-dock-actions">
@@ -4243,6 +4388,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       {isSim && mode === "map" && (
         <div
           className="mode-dock"
+          ref={dockRef}
           style={{ transform: `translate(calc(-50% + ${arDockOffset.x}px), ${arDockOffset.y}px)` }}
         >
           <div className="cam-hud-grip ar-panel-grip" onPointerDown={onDockGripDown}>
