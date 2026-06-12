@@ -472,6 +472,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const [frameMargin, setFrameMargin] = useState({ t: 0, r: 0, b: 0, l: 0 }); // 余白（切り抜き後の辺長に対する割合）
   const [frameMarginColor, setFrameMarginColor] = useState("#ffffff"); // 余白の色（白/黒）
   const [frameFade, setFrameFade] = useState(0); // ふち：余白のある辺で写真を余白色へぼかす幅（切り抜き後の辺長に対する割合）
+  const [cropEditMode, setCropEditMode] = useState(false); // 切り抜き調整モード（フル写真＋枠ドラッグ）
+  const cropDragRef = useRef<string | null>(null); // ドラッグ中の切り抜きハンドル（l/r/t/b/tl/tr/bl/br）
   // 解説ブロックの配置（写真フレーム内の正規化座標。ブロック左上）。ドラッグで移動。
   const [captionPos, setCaptionPos] = useState({ u: 0.05, v: 0.62 });
   const captionDragRef = useRef<{ offU: number; offV: number } | null>(null); // 解説ドラッグの掴み位置
@@ -2519,6 +2521,33 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
   const onEditUp = () => {
     arDragRef.current = null;
   };
+  // 切り抜き調整モードの枠ハンドルドラッグ。フル写真上(=写真正規化座標)で各辺を動かす。
+  const onCropHandleDown = (edge: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    cropDragRef.current = edge;
+  };
+  const onCropMove = (e: React.PointerEvent) => {
+    const edge = cropDragRef.current;
+    const stage = arEditStageRef.current;
+    if (!edge || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    const GAP = 0.08; // 反対辺と最低これだけ空ける
+    setCropInset((p) => {
+      let { l, t, r: rr, b } = p;
+      if (edge.includes("l")) l = Math.min(u, 1 - rr - GAP);
+      if (edge.includes("r")) rr = Math.min(1 - u, 1 - l - GAP);
+      if (edge.includes("t")) t = Math.min(v, 1 - b - GAP);
+      if (edge.includes("b")) b = Math.min(1 - v, 1 - t - GAP);
+      return { l: Math.max(0, l), t: Math.max(0, t), r: Math.max(0, rr), b: Math.max(0, b) };
+    });
+  };
+  const onCropUp = () => {
+    cropDragRef.current = null;
+  };
   // 出力枠(フレーム)を、外枠(ステージ)内に「contain」で収める px サイズに設定。
   useLayoutEffect(() => {
     const stageEl = arEditStageRef.current,
@@ -3586,6 +3615,37 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                 </div>
               )}
             </div>
+            {/* 切り抜き調整モード: フル写真＋ドラッグ枠を上に被せる */}
+            {cropEditMode && photoUrl && (
+              <div
+                className="ar-crop-edit"
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerMove={onCropMove}
+                onPointerUp={onCropUp}
+                onPointerCancel={onCropUp}
+              >
+                <img className="ar-edit-photo" src={photoUrl} alt="" draggable={false} />
+                <div
+                  className="ar-crop-rect"
+                  style={{
+                    left: `${cropInset.l * 100}%`,
+                    top: `${cropInset.t * 100}%`,
+                    right: `${cropInset.r * 100}%`,
+                    bottom: `${cropInset.b * 100}%`,
+                  }}
+                >
+                  {(["tl", "t", "tr", "l", "r", "bl", "b", "br"] as const).map((h) => (
+                    <span
+                      key={h}
+                      className={`ar-crop-h ar-crop-h--${h}`}
+                      onPointerDown={onCropHandleDown(h)}
+                      onPointerMove={onCropMove}
+                      onPointerUp={onCropUp}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div
             className="cam-hud"
@@ -3895,6 +3955,13 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
                     label: "フレーム",
                     content: (
                       <>
+                        <button
+                          className={`ar-follow-toggle${cropEditMode ? " is-on" : ""}`}
+                          onClick={() => setCropEditMode((v) => !v)}
+                        >
+                          <IconImage size={14} />
+                          {cropEditMode ? "切り抜き調整を終了（枠をドラッグ中）" : "切り抜きを枠でドラッグ調整"}
+                        </button>
                         <div className="ar-fs-row">
                           <span>余白の色</span>
                           <div className="seg" role="group" aria-label="余白の色">
