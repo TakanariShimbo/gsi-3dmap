@@ -2553,6 +2553,11 @@ body,
   opacity: 0;
   pointer-events: none;
 }
+/* 詳細の縦リズム（.zukan-inner の gap:18px に margin を足して、
+   画像↓32 → 山名↓12 → ふりがな↓28 → チップ↓20 → タグ↓32 → 日本語↓24 → 英語 にする）。 */
+.zukan-detail-head {
+  margin-top: 14px; /* 画像 → 山名 = 32 */
+}
 .zukan-detail-head h1 {
   margin: 0;
   font-size: clamp(26px, 5vw, 36px);
@@ -2561,7 +2566,7 @@ body,
 .zukan-detail-sub {
   display: flex;
   gap: 14px;
-  margin: 6px 0 0;
+  margin: 12px 0 0; /* 山名 → ふりがな/英名 = 12 */
   font-size: 14px;
   color: #9fb0c4;
 }
@@ -2569,6 +2574,7 @@ body,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 10px; /* 見出し → チップ = 28 */
 }
 .zukan-fact {
   padding: 5px 12px;
@@ -2589,21 +2595,21 @@ body,
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 2px; /* チップ → タグ = 20 */
 }
+/* 本文。「データ（チップ・タグ）」と「読み物（本文）」の間はしっかり空ける。 */
 .zukan-desc {
-  margin: 4px 0 0;
-  font-size: 14.5px;
-  line-height: 1.9;
-  color: #d7e0ec;
+  margin: 14px 0 0; /* タグ → 日本語本文 = 32 */
+  font-size: 16px;
+  line-height: 2;
+  color: rgba(235, 241, 248, 0.92);
 }
-/* 英語解説（日本語の下）。区切り線＋少し控えめのトーン。 */
+/* 英語解説（日本語の下）。線は引かず、余白＋淡いトーンだけで「同じ本文の続き」として分ける。 */
 .zukan-desc--en {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(130, 150, 175, 0.18);
-  font-size: 13.5px;
-  line-height: 1.75;
-  color: #b9c6d8;
+  margin-top: 6px; /* 日本語 → 英語 = 24 */
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(210, 220, 232, 0.72);
 }
 .zukan-src {
   margin: 0;
