@@ -15,7 +15,7 @@ export const CARDS: { mode: AppMode | "settings" | "zukan"; icon: React.ReactNod
     mode: "terrain",
     icon: <IconMountain size={26} />,
     title: "地形を読む",
-    desc: "3D地形で、山並みと立ち位置を立体的に見ます。",
+    desc: "3D地形で山並みを眺め、その場に立った景色も見渡せます。",
   },
   {
     mode: "celestial",
