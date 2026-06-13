@@ -19,11 +19,14 @@ export default function App() {
   // ホーム⇄各画面の遷移を暗転でつなぐ。地図⇄風景と同じ演出で、入る時は行き先カードを出す。
   const [fade, setFade] = useState(0);
   const [card, setCard] = useState<{ icon: React.ReactNode; title: string; loading: boolean } | null>(null);
+  // 図鑑→地形/太陽月 連携: 入場時にフライトする地点（通常入場では null）。
+  const [mapTarget, setMapTarget] = useState<{ lat: number; lon: number } | null>(null);
   const busyRef = useRef(false);
 
-  const navigate = (target: Screen) => {
+  const navigate = (target: Screen, mapTargetForMode?: { lat: number; lon: number }) => {
     if (busyRef.current || target === screen) return;
     busyRef.current = true;
+    setMapTarget(mapTargetForMode ?? null);
     // 3D読込を伴うのはMapViewの各モードのみ。設定・図鑑は読込なしで素早く開く（図鑑の3Dは詳細ページで遅延）。
     const heavy = target !== "home" && target !== "settings" && target !== "zukan";
     // 入る時は行き先のカードを表示。ホームへ戻る時はカードなしでサッと暗転。
@@ -50,9 +53,9 @@ export default function App() {
       ) : screen === "settings" ? (
         <SettingsScreen settings={settings} onChangeSettings={setSettings} onHome={() => navigate("home")} />
       ) : screen === "zukan" ? (
-        <Zukan onHome={() => navigate("home")} />
+        <Zukan onHome={() => navigate("home")} onOpenMap={(mode, target) => navigate(mode, target)} />
       ) : (
-        <MapView appMode={screen} onHome={() => navigate("home")} settings={settings} />
+        <MapView appMode={screen} onHome={() => navigate("home")} settings={settings} initialTarget={mapTarget} />
       )}
       {/* ホーム⇄各画面の暗転フェード（最前面）。入る時は行き先カードを出す。 */}
       <div className={`screen-fade${fade ? " is-on" : ""}`} style={{ opacity: fade }} aria-hidden="true">

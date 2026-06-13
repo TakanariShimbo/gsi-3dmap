@@ -107,6 +107,7 @@ type MapViewProps = {
   appMode: "terrain" | "celestial" | "ar" | "live" | "offline";
   onHome: () => void; // ホーム画面へ戻る。
   settings: Settings; // 表示設定（ホームで変更）。マウント時の初期値として取り込む。
+  initialTarget?: { lat: number; lon: number } | null; // 入場時にこの地点へフライト（図鑑→地形/太陽月 連携）。
 };
 
 // ARウィザードのフェーズ。
@@ -218,7 +219,7 @@ const roleFontStack = (id: FontPairId) => {
   return `"${p.en}", "${p.jp}", system-ui, sans-serif`;
 };
 
-export default function MapView({ appMode, onHome, settings }: MapViewProps) {
+export default function MapView({ appMode, onHome, settings, initialTarget }: MapViewProps) {
   // ar(写真)と live(カメラ) は、地点→向き→山選択→微調整 の流れを共有する（データ源だけ違う）。
   const arLike = appMode === "ar" || appMode === "live";
   const isSim = appMode === "terrain" || appMode === "celestial" || appMode === "offline"; // 3D地形ビュー系
@@ -1539,6 +1540,7 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     apiRef.current?.setBasemap(basemapById(basemapId));
   }, [basemapId]);
 
+
   // 空グラデーション表示の切替（ループから参照する ref に同期）。
   useEffect(() => {
     showSkyRef.current = showSky;
@@ -1595,6 +1597,14 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
     appModeRef.current = appMode;
   }, [appMode]);
 
+  // 図鑑などから渡された初期地点へ、入場時に一度だけフライトする。
+  // 2D/3D初期化([map2D] effect)が現在中心で flyGoal を設定するため、
+  // それより「後」に定義してフライト先を上書きする（マウント時の effect は定義順に実行）。
+  useEffect(() => {
+    if (initialTarget) apiRef.current?.flyTo(initialTarget);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 撮影写真の縦横比(W/H)を読み、3D描画枠の整形に使う（ループから ref で参照）。
   useEffect(() => {
     if (!photoUrl) {
@@ -1628,7 +1638,8 @@ export default function MapView({ appMode, onHome, settings }: MapViewProps) {
       (pos) => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         homeLocRef.current = loc;
-        apiRef.current?.flyTo(loc);
+        // 図鑑からの初期地点指定があるときは、現在地で上書きフライトしない（基準位置だけ保持）。
+        if (!initialTarget) apiRef.current?.flyTo(loc);
       },
       () => undefined, // 失敗・拒否時は既定ビューのまま
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },

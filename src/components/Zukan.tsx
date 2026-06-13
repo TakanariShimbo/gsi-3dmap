@@ -1,11 +1,15 @@
 // 山の図鑑。全1,061座を検索・フィルタ・ソートで一覧し、個別ページでは
 // 写真の代わりに3D地形の自動周回ビュー＋解説で山を知る。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconHome, IconChevron, IconSearch, IconMountain } from "./icons";
+import { IconHome, IconChevron, IconSearch, IconMountain, IconSun } from "./icons";
 import { loadZukanEntries, type ZukanEntry } from "../lib/mountains";
 import ZukanOrbit from "./ZukanOrbit";
 
-type Props = { onHome: () => void };
+type Props = {
+  onHome: () => void;
+  // この山を中心にシミュレーションへ（terrain=地形のみ / celestial=太陽・月あり）。
+  onOpenMap: (mode: "terrain" | "celestial", target: { lat: number; lon: number }) => void;
+};
 
 // 並び順。famous=有名順(priority)、elevDesc/Asc=標高、kana=五十音。
 type SortKey = "famous" | "elevDesc" | "elevAsc" | "kana";
@@ -38,7 +42,7 @@ const PREF_ORDER = [
 
 const PAGE = 60; // 一覧の段階表示の単位（全件即レンダーを避ける）
 
-export default function Zukan({ onHome }: Props) {
+export default function Zukan({ onHome, onOpenMap }: Props) {
   const [entries, setEntries] = useState<ZukanEntry[] | null>(null);
   const [q, setQ] = useState("");
   const [pref, setPref] = useState("all");
@@ -156,6 +160,21 @@ export default function Zukan({ onHome }: Props) {
               ))}
             </div>
           )}
+          {/* この山を中心にシミュレーションへ（地形のみ / 太陽・月あり） */}
+          <div className="zukan-actions">
+            <button
+              className="zukan-action"
+              onClick={() => onOpenMap("terrain", { lat: selected.lat, lon: selected.lon })}
+            >
+              <IconMountain size={15} /> この山の地形を見る
+            </button>
+            <button
+              className="zukan-action"
+              onClick={() => onOpenMap("celestial", { lat: selected.lat, lon: selected.lon })}
+            >
+              <IconSun size={15} /> 太陽・月の動きと見る
+            </button>
+          </div>
           {selected.descriptionJa && <p className="zukan-desc">{selected.descriptionJa}</p>}
           {selected.descriptionEn && <p className="zukan-desc zukan-desc--en">{selected.descriptionEn}</p>}
           {selected.url && (
