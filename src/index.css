@@ -2341,7 +2341,8 @@ body,
   flex-direction: column;
   gap: 18px;
   padding-top: 34px;
-  padding-bottom: 40px;
+  /* 末尾のボタン・リンクが画面端に張り付くと押しづらいので、下はたっぷり空ける（+セーフエリア）。 */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 }
 /* 検索＋フィルタ＋ソートの操作列 */
 .zukan-controls {
