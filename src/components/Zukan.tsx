@@ -280,10 +280,10 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
         <div className="zukan-inner">
           <header className="home-head">
             <h1>山を知る</h1>
-            <p>日本の山 {entries ? entries.length.toLocaleString() : "…"} 座 ― 検索・絞り込みで、つぎに撮りたい山を見つける</p>
+            <p>日本の山、{entries ? entries.length.toLocaleString() : "…"}座。名前・地域・標高・タグから探す。</p>
           </header>
 
-          {/* 検索＋フィルタ＋ソート */}
+          {/* 検索を主役に、絞り込みはピルで軽く（枠は検索欄だけ）。 */}
           <div className="zukan-controls">
             <label className="zukan-search">
               <IconSearch size={15} />
@@ -326,8 +326,8 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
                   </option>
                 ))}
               </select>
+              <span className="zukan-count">{entries ? `${filtered.length.toLocaleString()} 座` : "…"}</span>
             </div>
-            <p className="zukan-count">{entries ? `${filtered.length.toLocaleString()} 座` : "読み込み中…"}</p>
           </div>
 
           {/* カード一覧（段階表示） */}
@@ -336,12 +336,16 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
               <button key={e.id} className="zukan-card" onClick={() => openDetail(e)}>
                 <span className="zukan-card-head">
                   <span className="zukan-card-name">{e.name}</span>
-                  <span className="zukan-card-elev">{e.elevationM.toLocaleString()}m</span>
+                  <span className="zukan-card-elev">{e.elevationM.toLocaleString()} m</span>
                 </span>
-                <span className="zukan-card-sub">
-                  {e.kana && <span>{e.kana}</span>}
-                  {e.prefecture && <span>{e.prefecture.replace(/\//g, "・")}</span>}
-                </span>
+                {(e.kana || e.titleEn) && (
+                  <span className="zukan-card-reading">
+                    {e.kana}
+                    {e.kana && e.titleEn && " / "}
+                    {e.titleEn && <span className="zukan-card-en">{e.titleEn}</span>}
+                  </span>
+                )}
+                {e.prefecture && <span className="zukan-card-pref">{e.prefecture.replace(/\//g, "・")}</span>}
                 {e.descriptionShortJa && <span className="zukan-card-desc">{e.descriptionShortJa}</span>}
                 {e.tags.length > 0 && (
                   <span className="zukan-card-tags">
@@ -350,6 +354,7 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
                         {t}
                       </span>
                     ))}
+                    {e.tags.length > 3 && <span className="zukan-card-more">+{e.tags.length - 3}</span>}
                   </span>
                 )}
               </button>

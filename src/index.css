@@ -2393,23 +2393,20 @@ body,
   height: calc(70px + env(safe-area-inset-bottom, 0px));
 }
 /* 検索＋フィルタ＋ソートを1枚のパネルにまとめる（“フォームが並ぶ業務アプリ感”を消す）。 */
+/* 検索を主役に。外枠パネルはやめ、検索欄だけ枠で囲む（管理画面感を消す）。 */
 .zukan-controls {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--line);
-  border-radius: 22px;
+  gap: 12px;
 }
 .zukan-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  gap: 9px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
   color: var(--sub);
 }
 .zukan-search:focus-within {
@@ -2417,37 +2414,34 @@ body,
 }
 .zukan-search input {
   flex: 1;
-  height: 40px;
+  height: 46px;
   border: none;
   background: transparent;
   color: var(--fg);
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
 }
+/* 絞り込みは小さなピル。件数は同じ行の右端へ。 */
 .zukan-filters {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
-@media (max-width: 640px) {
-  .zukan-filters {
-    grid-template-columns: 1fr 1fr;
-  }
-}
 .zukan-filters select {
-  height: 38px;
-  padding: 0 8px;
+  height: 34px;
+  padding: 0 12px;
   color: var(--fg);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  font-size: 13px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  font-size: 12.5px;
+  cursor: pointer;
 }
 .zukan-count {
-  margin: 0;
+  margin: 0 0 0 auto; /* 行末へ押し出す */
   font-size: 12px;
   color: var(--sub);
-  text-align: right;
 }
 /* 共有リンクのコピー（右上・ホームボタンの左隣）。図鑑・地形・太陽月で共用。 */
 .share-btn {
@@ -2488,30 +2482,31 @@ body,
 .zukan-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 @media (max-width: 640px) {
   .zukan-grid {
     grid-template-columns: 1fr;
   }
 }
+/* カードは“図鑑の目次”。枠は控えめ・内側に呼吸・情報の主従をつける。 */
 .zukan-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 15px 17px;
+  gap: 5px;
+  padding: 18px 20px;
   text-align: left;
   color: var(--fg);
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
 .zukan-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(214, 180, 106, 0.5);
-  background: var(--panel-2);
+  border-color: rgba(214, 180, 106, 0.45);
+  background: rgba(255, 255, 255, 0.06);
 }
 .zukan-card-head {
   display: flex;
@@ -2520,25 +2515,33 @@ body,
   gap: 10px;
 }
 .zukan-card-name {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .zukan-card-elev {
   flex: none;
   font-size: 13px;
-  color: var(--fg);
+  color: rgba(255, 255, 255, 0.72);
   font-variant-numeric: tabular-nums;
 }
-.zukan-card-sub {
-  display: flex;
-  gap: 10px;
+/* 読み / 英名（詳細ページと同じ並び）。 */
+.zukan-card-reading {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.56);
+}
+.zukan-card-en {
+  opacity: 0.82;
+}
+.zukan-card-pref {
   font-size: 12px;
   color: var(--sub);
 }
 .zukan-card-desc {
-  font-size: 12px;
-  line-height: 1.55;
-  color: #b3b0a8;
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.5);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -2547,7 +2550,13 @@ body,
 .zukan-card-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
+  margin-top: 4px;
+}
+.zukan-card-more {
+  font-size: 11px;
+  color: var(--sub);
 }
 /* タグ（ピル）。詳細はクリックで一覧の絞り込みに使える。他のピルと枠・地・角丸を統一。 */
 .zukan-tag {
