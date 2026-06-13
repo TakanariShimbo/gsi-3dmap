@@ -184,7 +184,7 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
 
       {selected ? (
         /* ====== 個別詳細ページ ====== */
-        <div className="zukan-inner">
+        <div className="zukan-inner zukan-inner--detail">
           <button className="zukan-back" onClick={backToList}>
             <IconChevron dir="left" size={16} /> 図鑑にもどる
           </button>

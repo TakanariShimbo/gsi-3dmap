@@ -2341,8 +2341,19 @@ body,
   flex-direction: column;
   gap: 18px;
   padding-top: 34px;
-  /* 末尾のボタン・リンクが画面端に張り付くと押しづらいので、下はたっぷり空ける（+セーフエリア）。 */
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
+}
+/* 末尾の下余白。.home は overflow付き flex コンテナで、子の padding-bottom は
+   スクロール時に詰められて効かない。実体のあるスペーサー(::after の flex item)なら
+   確実にスクロール領域に含まれるので、こちらで下余白を作る（+セーフエリア）。 */
+.zukan-inner::after {
+  content: "";
+  flex: none;
+  height: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+/* 個別詳細は読み物が長く、末尾（ボタン・出典）が下端に詰まりやすいのでさらに広く。 */
+.zukan-inner--detail::after {
+  height: calc(140px + env(safe-area-inset-bottom, 0px));
 }
 /* 検索＋フィルタ＋ソートの操作列 */
 .zukan-controls {
