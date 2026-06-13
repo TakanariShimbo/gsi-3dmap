@@ -151,12 +151,13 @@ body,
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px 12px;
-  color: #e6edf5;
-  background: rgba(13, 13, 15, 0.9);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 12px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  color: var(--fg);
+  /* 3D地形が主役。パネルは薄いガラスのHUDに（透過＋強めのブラー）。 */
+  background: rgba(14, 14, 16, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
   z-index: 20;
 }
 .mode-dock-body {
@@ -415,12 +416,12 @@ body,
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  color: #e6edf5;
-  background: rgba(13, 13, 15, 0.86);
-  border: 1px solid rgba(130, 150, 175, 0.25);
-  border-radius: 12px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  color: var(--fg);
+  background: rgba(14, 14, 16, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
   z-index: 20; /* 写真オーバーレイ(z4)より前面に */
 }
 /* ドック内の操作行（地図/カメラ・2D/3D は選択ボタン、現在地等はアイコン）。 */
@@ -435,9 +436,9 @@ body,
 .seg {
   display: inline-flex;
   min-height: var(--btn-h);
-  background: rgba(40, 52, 68, 0.5);
-  border: 1px solid rgba(130, 150, 175, 0.28);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   padding: 2px;
   gap: 2px;
 }
@@ -476,10 +477,10 @@ body,
   padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #cdd6e2;
-  background: rgba(40, 52, 68, 0.5);
-  border: 1px solid rgba(130, 150, 175, 0.28);
-  border-radius: 8px;
+  color: #ece6d8;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -496,9 +497,9 @@ body,
 /* アナウンス（タイトル直下の本文のみ。見出しなし）。 */
 .dock-announce {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #b9c6d8;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.45); /* 手引きではなく静かなキャプションに */
 }
 /* セクションをタブ化。タブで選んだ1項目だけ本体を表示（縦長対策）。 */
 .dock-tabwrap {
@@ -1498,12 +1499,12 @@ body,
   flex-direction: column;
   gap: 10px;
   padding: 10px 14px 12px;
-  color: #e6edf5;
-  background: rgba(13, 13, 15, 0.92);
-  border: 1px solid rgba(130, 150, 175, 0.28);
-  border-radius: 14px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  color: var(--fg);
+  background: rgba(14, 14, 16, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
   z-index: 22;
 }
 /* 進行表示（各下部パネルの上段に静的に並べる） */
