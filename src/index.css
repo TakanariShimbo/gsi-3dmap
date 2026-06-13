@@ -5,7 +5,6 @@
   --font-display: "Space Grotesk", "Noto Sans JP", "Inter", sans-serif;
   --font-body: "Inter", "Noto Sans JP", sans-serif;
   --font-mono: "IBM Plex Mono", "Roboto Mono", monospace;
-  --font-serif: "Noto Serif JP", serif; /* 図鑑の山名など“作品”の見出し用 */
   font-family: var(--font-body);
   /* パネル内ボタンの共通高さ。すべての操作ボタンはこの高さに揃える（幅は中身次第）。 */
   --btn-h: 36px;
@@ -2663,11 +2662,10 @@ body,
 }
 .zukan-detail-head h1 {
   margin: 0;
-  font-family: var(--font-serif); /* 山名だけ明朝で“作品”として特別扱い */
-  font-size: clamp(36px, 8vw, 56px);
-  font-weight: 600;
+  font-size: clamp(34px, 7.5vw, 52px);
+  font-weight: 700;
   line-height: 1.1;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   color: var(--fg);
 }
 /* 読み・英名は同じ役割の“補足情報1行”。英名は補足なのでさらにトーンを落とす。 */
