@@ -1,5 +1,6 @@
 // ホーム画面のカード定義（一覧と、画面遷移の暗転カードで共用）。
 // 用途別モード（MapView）に加え、表示設定・図鑑の専用画面もカードから入る。
+// タイトルは「短い日本語の動詞形」で統一（名詞混在を避ける）。説明は「〜できます/ます」。
 import { IconMountain, IconSun, IconImage, IconCamera, IconDownload, IconSettings, IconBook } from "./components/icons";
 import type { AppMode } from "./App";
 
@@ -7,8 +8,8 @@ export const CARDS: { mode: AppMode | "settings" | "zukan"; icon: React.ReactNod
   {
     mode: "zukan",
     icon: <IconBook size={26} />,
-    title: "山の図鑑",
-    desc: "日本の山 1,061座。標高や地域、タグで絞り込み、3D地形と解説で山を知れます",
+    title: "山を知る",
+    desc: "日本の山 1,061座。標高や地域、タグで絞り込み、3D地形と解説でたどれます",
   },
   {
     mode: "terrain",
@@ -19,7 +20,7 @@ export const CARDS: { mode: AppMode | "settings" | "zukan"; icon: React.ReactNod
   {
     mode: "celestial",
     icon: <IconSun size={26} />,
-    title: "太陽・月の動きを見る",
+    title: "太陽と月を追う",
     desc: "選んだ場所と日時で、太陽や月が見える方角・高さや、日の出・日の入りの時刻を確かめられます",
   },
   {
@@ -37,13 +38,13 @@ export const CARDS: { mode: AppMode | "settings" | "zukan"; icon: React.ReactNod
   {
     mode: "offline",
     icon: <IconDownload size={26} />,
-    title: "オフライン保存",
+    title: "オフラインに備える",
     desc: "電波が届かない場所でも見られるよう、必要な範囲を前もって保存しておけます",
   },
   {
     mode: "settings",
     icon: <IconSettings size={26} />,
-    title: "表示設定",
+    title: "表示を整える",
     desc: "中心・山頂マーカーや空のグラデーション、標高の誇張を切り替えます。各モードに引き継がれます",
   },
 ];

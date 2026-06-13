@@ -237,7 +237,7 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
               className="zukan-action"
               onClick={() => onOpenMap("celestial", { lat: selected.lat, lon: selected.lon })}
             >
-              <IconSun size={15} /> 太陽・月の動きと見る
+              <IconSun size={15} /> この山で太陽と月を追う
             </button>
           </div>
           {selected.url && (
