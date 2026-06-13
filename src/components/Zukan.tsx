@@ -224,14 +224,19 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
             </div>
           )}
           {selected.descriptionJa && <p className="zukan-desc">{selected.descriptionJa}</p>}
-          {selected.descriptionEn && <p className="zukan-desc zukan-desc--en">{selected.descriptionEn}</p>}
+          {selected.descriptionEn && (
+            <>
+              <p className="zukan-section-label">EN</p>
+              <p className="zukan-desc zukan-desc--en">{selected.descriptionEn}</p>
+            </>
+          )}
           {/* この山を中心にシミュレーションへ（地形のみ / 太陽・月あり）。読み終わりの導線として解説の下。 */}
           <div className="zukan-actions">
             <button
               className="zukan-action"
               onClick={() => onOpenMap("terrain", { lat: selected.lat, lon: selected.lon })}
             >
-              <IconMountain size={15} /> この山の地形を見る
+              <IconMountain size={15} /> この山の地形を読む
             </button>
             <button
               className="zukan-action"
