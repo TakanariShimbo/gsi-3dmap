@@ -2401,8 +2401,8 @@ body,
   color: #9fb0c4;
   text-align: right;
 }
-/* 共有リンクのコピー（右上・ホームボタンの左隣に常設）。 */
-.zukan-share {
+/* 共有リンクのコピー（右上・ホームボタンの左隣）。図鑑・地形・太陽月で共用。 */
+.share-btn {
   position: absolute;
   top: max(8px, env(safe-area-inset-top, 8px));
   right: calc(max(8px, env(safe-area-inset-right, 8px)) + 50px); /* 42px(home) + 8px */
@@ -2422,13 +2422,13 @@ body,
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-.zukan-share:hover {
+.share-btn:hover {
   border-color: rgba(143, 194, 255, 0.55);
   background: rgba(26, 35, 49, 0.85);
 }
 @media (max-width: 480px) {
   /* 狭い画面では文字を隠してアイコンだけに（はみ出し防止）。 */
-  .zukan-share {
+  .share-btn {
     padding: 0;
     width: 42px;
     justify-content: center;

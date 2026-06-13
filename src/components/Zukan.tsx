@@ -172,7 +172,7 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
     <div className="home zukan" ref={rootRef}>
       {/* 共有リンクのコピー（右上・ホームの左隣。詳細＝この山 / 一覧＝検索結果へのリンク）。 */}
       <button
-        className="zukan-share"
+        className="share-btn"
         title={selected ? "この山へのリンクをコピー" : "この検索結果へのリンクをコピー"}
         onClick={copyLink}
       >

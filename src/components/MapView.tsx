@@ -23,6 +23,7 @@ import {
   IconGrid,
   IconEye,
   IconInfo,
+  IconLink,
   IconCaret,
   IconMove,
   IconAll,
@@ -628,6 +629,24 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
   const [center, setCenter] = useState<LonLat | null>(null);
   const [progress, setProgress] = useState<PrefetchProgress | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // 共有リンク（地形・太陽月のみ）。今見ている中心の座標を入れたURLにしてコピーする。
+  const [shareCopied, setShareCopied] = useState(false);
+  const shareTimerRef = useRef(0);
+  const canShare = appMode === "terrain" || appMode === "celestial"; // フェーズのあるAR系は対象外
+  const shareCurrentView = async () => {
+    const c = apiRef.current?.getCenter();
+    let hash = `#/${appMode}`;
+    if (c) hash += `?lat=${c.lat.toFixed(5)}&lon=${c.lon.toFixed(5)}`;
+    history.replaceState(null, "", location.pathname + location.search + hash);
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setShareCopied(true);
+      window.clearTimeout(shareTimerRef.current);
+      shareTimerRef.current = window.setTimeout(() => setShareCopied(false), 1600);
+    } catch {
+      window.prompt("このリンクをコピーしてください", location.href);
+    }
+  };
   const [storageUsage, setStorageUsage] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -4226,6 +4245,12 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
       {/* 表示設定はホーム画面の「表示設定」パネルへ移設（旧☰メニューは廃止）。 */}
       {locError && mode === "map" && <div className="locate-warn">{locError}</div>}
 
+      {/* 共有リンクのコピー（地形・太陽月のみ。今の中心地点を入れたURL）。ホームの左隣。 */}
+      {canShare && (
+        <button className="share-btn" title="今の場所への共有リンクをコピー" onClick={shareCurrentView}>
+          <IconLink size={15} /> {shareCopied ? "コピーしました ✓" : "リンクをコピー"}
+        </button>
+      )}
       {/* ホームへ戻る（右上の右端。押し間違い防止で左の操作群と離す）。 */}
       <button className="home-btn" title="ホーム画面へ戻る" aria-label="ホーム" onClick={onHome}>
         <IconHome size={18} />
