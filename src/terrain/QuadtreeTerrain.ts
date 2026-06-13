@@ -112,7 +112,7 @@ export class QuadtreeTerrain {
     dir: { value: 0 }, // 方位(rad, 0=北, 時計回り)
     half: { value: 0 }, // 画角の半分(rad)
     radius: { value: 0 }, // 扇の長さ(world)
-    color: { value: new THREE.Color(0.37, 0.63, 0.9) },
+    color: { value: new THREE.Color(0.84, 0.71, 0.42) },
     fillAlpha: { value: 0.34 }, // 中心の塗り濃さ（外周へ0）
   };
   // 現在ドレープしているベースマップ。setBasemap で切替（タイルを貼り直す）。

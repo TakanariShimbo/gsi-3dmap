@@ -500,7 +500,7 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
   const [labelShadow, setLabelShadow] = useState(true);
   const [captionShadow, setCaptionShadow] = useState(true);
   // タグ（ピル）の色と、その色を背景／文字どちらに使うか。
-  const [tagColor, setTagColor] = useState("#3f6fb0");
+  const [tagColor, setTagColor] = useState("#d6b46a");
   const [tagColorTarget, setTagColorTarget] = useState<"bg" | "text">("bg");
   // タグの塗り分け。背景に使うとき＝文字は可読な反対色／文字に使うとき＝背景は反対色の半透明。
   const pillColors = () =>
@@ -897,7 +897,7 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
     }
     const previewRing = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(ringPts),
-      new THREE.LineBasicMaterial({ color: 0x5bd6ff, depthTest: false, transparent: true, opacity: 0.95 }),
+      new THREE.LineBasicMaterial({ color: 0xd6b46a, depthTest: false, transparent: true, opacity: 0.95 }),
     );
     previewRing.renderOrder = 999;
     previewRing.visible = false;
@@ -3582,7 +3582,7 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
                           y1={sp.y * 100}
                           x2={dp.u * 100}
                           y2={dp.v * 100}
-                          stroke="rgb(143,194,255)"
+                          stroke="rgb(214,180,106)"
                           strokeWidth={1.2}
                           vectorEffect="non-scaling-stroke"
                         />
@@ -4233,12 +4233,12 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
       {/* 中心レティクル（注視点＝画面中央の目印）。ARでは撮影地点ピンを使うので出さない。 */}
       {isSim && mode === "map" && showCenter && (
         <svg ref={reticleRef} className="center-reticle" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
-          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#8fe0ff" strokeWidth="1.6" />
-          <circle cx="16" cy="16" r="1.5" fill="#8fe0ff" />
-          <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="16" y1="25.5" x2="16" y2="29.5" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="2.5" y1="16" x2="6.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="25.5" y1="16" x2="29.5" y2="16" stroke="#8fe0ff" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#d6b46a" strokeWidth="1.6" />
+          <circle cx="16" cy="16" r="1.5" fill="#d6b46a" />
+          <line x1="16" y1="2.5" x2="16" y2="6.5" stroke="#d6b46a" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="16" y1="25.5" x2="16" y2="29.5" stroke="#d6b46a" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="2.5" y1="16" x2="6.5" y2="16" stroke="#d6b46a" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="25.5" y1="16" x2="29.5" y2="16" stroke="#d6b46a" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       )}
 

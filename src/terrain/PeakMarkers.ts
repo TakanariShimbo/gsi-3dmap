@@ -11,7 +11,7 @@ import type { MountainHit } from "../lib/mountains";
 import { mercXToWorld, mercYToWorld, elevToWorldY, lonToMercX, latToMercY } from "../lib/mercator";
 
 const COL_BASE = new THREE.Color(0xff9e3d); // 非選択（オレンジ。地形に埋もれず派手すぎない）
-const COL_SELECTED = new THREE.Color(0x5b9cf0); // 選択中（アプリのアクセントに合わせたブルー）
+const COL_SELECTED = new THREE.Color(0xffffff); // 選択中（白でハイライト。非選択の暖色オレンジと明度で区別）
 const POINT_PX = 7; // 点の画面サイズ(px)
 const PICK_RADIUS_PX = 16; // この画素以内のクリックを「その点をタップ」とみなす
 

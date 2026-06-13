@@ -373,7 +373,7 @@ body,
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   font-size: 13px;
   letter-spacing: 0.08em;
-  color: #8a98ad;
+  color: #9c9a94;
 }
 .fade-loading::after {
   content: "";
@@ -1102,7 +1102,7 @@ body,
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(207, 224, 245, 0.28);
+  border: 2px solid rgba(236, 227, 207, 0.25);
   border-top-color: #ece3cf;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
