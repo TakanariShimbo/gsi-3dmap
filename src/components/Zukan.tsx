@@ -1,7 +1,7 @@
 // 山の図鑑。全1,061座を検索・フィルタ・ソートで一覧し、個別ページでは
 // 写真の代わりに3D地形の自動周回ビュー＋解説で山を知る。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconHome, IconChevron, IconSearch, IconMountain, IconSun } from "./icons";
+import { IconHome, IconChevron, IconSearch, IconMountain, IconSun, IconLink } from "./icons";
 import { loadZukanEntries, type ZukanEntry } from "../lib/mountains";
 import ZukanOrbit from "./ZukanOrbit";
 
@@ -42,15 +42,35 @@ const PREF_ORDER = [
 
 const PAGE = 60; // 一覧の段階表示の単位（全件即レンダーを避ける）
 
+// 共有リンク（#/zukan?q=..&pref=.. / #/zukan/123）から検索状態・山IDを復元する。
+function parseZukanHash() {
+  const [path, query] = location.hash.replace(/^#\/?/, "").split("?");
+  const segs = path.split("/");
+  const p = new URLSearchParams(query);
+  const id = segs[0] === "zukan" && segs[1] ? Number(segs[1]) : null;
+  return {
+    id: Number.isFinite(id as number) ? id : null,
+    q: p.get("q") ?? "",
+    pref: p.get("pref") ?? "all",
+    elev: ELEV_BANDS.some((b) => b.key === p.get("elev")) ? (p.get("elev") as string) : "all",
+    tag: p.get("tag") ?? "all",
+    sort: SORTS.some((s) => s.key === p.get("sort")) ? (p.get("sort") as SortKey) : ("famous" as SortKey),
+  };
+}
+
 export default function Zukan({ onHome, onOpenMap }: Props) {
+  // 初期状態は共有リンク（URLハッシュ）から復元。
+  const [init] = useState(parseZukanHash);
   const [entries, setEntries] = useState<ZukanEntry[] | null>(null);
-  const [q, setQ] = useState("");
-  const [pref, setPref] = useState("all");
-  const [elevBand, setElevBand] = useState("all");
-  const [tag, setTag] = useState("all");
-  const [sort, setSort] = useState<SortKey>("famous");
+  const [q, setQ] = useState(init.q);
+  const [pref, setPref] = useState(init.pref);
+  const [elevBand, setElevBand] = useState(init.elev);
+  const [tag, setTag] = useState(init.tag);
+  const [sort, setSort] = useState<SortKey>(init.sort);
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState<ZukanEntry | null>(null);
+  const [pendingId, setPendingId] = useState<number | null>(init.id); // データ到着後に開く山ID
+  const [copied, setCopied] = useState(false); // 「リンクをコピー」の完了表示
   const listScrollRef = useRef(0); // 詳細から戻った時にスクロール位置を復元
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -101,6 +121,41 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
 
   // 条件が変わったら表示件数をリセット。
   useEffect(() => setShown(PAGE), [q, pref, elevBand, tag, sort]);
+
+  // 共有リンクで個別ページ指定（#/zukan/123）→ データ到着後にその山を開く。
+  useEffect(() => {
+    if (!entries || pendingId == null) return;
+    const e = entries.find((m) => m.id === pendingId);
+    if (e) setSelected(e);
+    setPendingId(null);
+  }, [entries, pendingId]);
+
+  // 現在の状態（個別ページ or 検索条件）をURLハッシュへ反映 → そのままコピーで共有できる。
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (q.trim()) sp.set("q", q.trim());
+    if (pref !== "all") sp.set("pref", pref);
+    if (elevBand !== "all") sp.set("elev", elevBand);
+    if (tag !== "all") sp.set("tag", tag);
+    if (sort !== "famous") sp.set("sort", sort);
+    const qs = sp.toString();
+    const hash = selected ? `#/zukan/${selected.id}` : `#/zukan${qs ? `?${qs}` : ""}`;
+    history.replaceState(null, "", location.pathname + location.search + hash);
+  }, [q, pref, elevBand, tag, sort, selected]);
+
+  // 現在のURLをクリップボードへ（共有リンク）。1.6秒だけ「コピーしました」を出す。
+  const copyTimerRef = useRef(0);
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setCopied(true);
+      window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // クリップボード不可（権限など）の場合はプロンプトで提示。
+      window.prompt("このリンクをコピーしてください", location.href);
+    }
+  };
 
   const openDetail = (e: ZukanEntry) => {
     listScrollRef.current = rootRef.current?.scrollTop ?? 0;
@@ -176,6 +231,9 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
             >
               <IconSun size={15} /> 太陽・月の動きと見る
             </button>
+            <button className="zukan-action zukan-action--ghost" onClick={copyLink}>
+              <IconLink size={15} /> {copied ? "コピーしました ✓" : "リンクをコピー"}
+            </button>
           </div>
           {selected.url && (
             <p className="zukan-src">
@@ -238,7 +296,12 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
                 ))}
               </select>
             </div>
-            <p className="zukan-count">{entries ? `${filtered.length.toLocaleString()} 座` : "読み込み中…"}</p>
+            <div className="zukan-count-row">
+              <button className="zukan-copy" onClick={copyLink} title="この検索結果へのリンクをコピー">
+                <IconLink size={13} /> {copied ? "コピーしました ✓" : "検索結果のリンクをコピー"}
+              </button>
+              <p className="zukan-count">{entries ? `${filtered.length.toLocaleString()} 座` : "読み込み中…"}</p>
+            </div>
           </div>
 
           {/* カード一覧（段階表示） */}

@@ -12,21 +12,51 @@ export type AppMode = "terrain" | "celestial" | "ar" | "live" | "offline";
 // ホームのカードから入れる画面（モード＋設定＋図鑑）。設定・図鑑はMapViewではなく専用画面。
 export type Screen = "home" | AppMode | "settings" | "zukan";
 
+const SCREENS: Screen[] = ["terrain", "celestial", "ar", "live", "offline", "settings", "zukan"];
+
+// 共有リンク（ハッシュ）を解釈する。GitHub Pages（静的）でも動くようハッシュベース。
+//   #/zukan, #/zukan?q=..&tag=.., #/zukan/123  … 図鑑（検索状態・個別ページは Zukan 側が読む）
+//   #/terrain?lat=..&lon=.. / #/celestial?...  … その地点へフライト入場
+function parseHash(): { screen: Screen; target: { lat: number; lon: number } | null } {
+  const [path, query] = location.hash.replace(/^#\/?/, "").split("?");
+  const seg = path.split("/")[0] as Screen;
+  if (!SCREENS.includes(seg)) return { screen: "home", target: null };
+  const p = new URLSearchParams(query);
+  const lat = Number(p.get("lat")), lon = Number(p.get("lon"));
+  const target = p.has("lat") && Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+  return { screen: seg, target };
+}
+
+// 画面に応じてURL（ハッシュ）を書く。図鑑内の詳細・検索状態は Zukan 側が上書きする。
+function writeHash(screen: Screen, target: { lat: number; lon: number } | null) {
+  let hash = "";
+  if (screen !== "home") {
+    hash = `#/${screen}`;
+    if (target && (screen === "terrain" || screen === "celestial")) {
+      hash += `?lat=${target.lat.toFixed(5)}&lon=${target.lon.toFixed(5)}`;
+    }
+  }
+  history.replaceState(null, "", location.pathname + location.search + hash);
+}
+
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("home");
+  // 起動時はURL（共有リンク）から画面を復元。通常起動はホーム。
+  const [initial] = useState(parseHash);
+  const [screen, setScreen] = useState<Screen>(initial.screen);
   // 表示設定（旧☰メニューの中身）。設定画面で変更し、各モードへ引き継ぐ。
   const [settings, setSettings] = useSettings();
   // ホーム⇄各画面の遷移を暗転でつなぐ。地図⇄風景と同じ演出で、入る時は行き先カードを出す。
   const [fade, setFade] = useState(0);
   const [card, setCard] = useState<{ icon: React.ReactNode; title: string; loading: boolean } | null>(null);
-  // 図鑑→地形/太陽月 連携: 入場時にフライトする地点（通常入場では null）。
-  const [mapTarget, setMapTarget] = useState<{ lat: number; lon: number } | null>(null);
+  // 図鑑→地形/太陽月 連携: 入場時にフライトする地点（通常入場では null。共有リンクからも復元）。
+  const [mapTarget, setMapTarget] = useState<{ lat: number; lon: number } | null>(initial.target);
   const busyRef = useRef(false);
 
   const navigate = (target: Screen, mapTargetForMode?: { lat: number; lon: number }) => {
     if (busyRef.current || target === screen) return;
     busyRef.current = true;
     setMapTarget(mapTargetForMode ?? null);
+    writeHash(target, mapTargetForMode ?? null); // 共有できるよう現在画面をURLに反映
     // 3D読込を伴うのはMapViewの各モードのみ。設定・図鑑は読込なしで素早く開く（図鑑の3Dは詳細ページで遅延）。
     const heavy = target !== "home" && target !== "settings" && target !== "zukan";
     // 入る時は行き先のカードを表示。ホームへ戻る時はカードなしでサッと暗転。

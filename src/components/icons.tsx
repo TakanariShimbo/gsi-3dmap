@@ -39,6 +39,16 @@ export function IconBook({ size = 16, className }: Props) {
   );
 }
 
+/** リンク（鎖）。共有リンクのコピー用。 */
+export function IconLink({ size = 16, className }: Props) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <path d="M10 14 a4 4 0 0 1 0 -5.6 l3.2 -3.2 a4 4 0 0 1 5.6 5.6 l-1.6 1.6" />
+      <path d="M14 10 a4 4 0 0 1 0 5.6 l-3.2 3.2 a4 4 0 0 1 -5.6 -5.6 l1.6 -1.6" />
+    </svg>
+  );
+}
+
 /** 地図ピン。検索結果の土地名用。 */
 export function IconPin({ size = 16, className }: Props) {
   return (

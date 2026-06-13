@@ -2388,11 +2388,34 @@ body,
   border-radius: 9px;
   font-size: 13px;
 }
+.zukan-count-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
 .zukan-count {
   margin: 0;
   font-size: 12px;
   color: #9fb0c4;
   text-align: right;
+}
+/* 検索結果の共有リンクコピー（控えめなテキストボタン） */
+.zukan-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #9fb0c4;
+  background: transparent;
+  border: 1px solid rgba(130, 150, 175, 0.25);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.zukan-copy:hover {
+  color: #cdd6e2;
+  border-color: rgba(143, 194, 255, 0.45);
 }
 /* カード一覧 */
 .zukan-grid {
@@ -2624,6 +2647,16 @@ body,
 .zukan-action:hover {
   background: rgba(63, 111, 176, 0.42);
   border-color: rgba(143, 194, 255, 0.65);
+}
+/* 控えめなアクション（リンクコピーなど）。青塗りなしの枠だけ。 */
+.zukan-action--ghost {
+  color: #b9c6d8;
+  background: transparent;
+  border-color: rgba(130, 150, 175, 0.32);
+}
+.zukan-action--ghost:hover {
+  background: rgba(40, 52, 68, 0.5);
+  border-color: rgba(143, 194, 255, 0.5);
 }
 /* 本文。「データ（チップ・タグ）」と「読み物（本文）」の間はしっかり空ける。 */
 .zukan-desc {
