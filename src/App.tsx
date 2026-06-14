@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import Home from "./components/Home";
 import MapView from "./components/MapView";
 import SettingsScreen from "./components/SettingsScreen";
 import Zukan from "./components/Zukan";
 import { CARDS } from "./modeCards";
 import { useSettings } from "./settings";
+
+// サムネ生成専用の隠しハーネス（#/__thumbs）。本番バンドルに常駐させないよう遅延読込。
+const ThumbStudio = lazy(() => import("./components/ThumbStudio"));
 
 // 画面ルーター: ホーム → 各モード／設定。3Dエンジン(MapView)は共通で、appMode で用途別に振る舞いを切り替える。
 // terrain=地形 / celestial=太陽月 / ar=写真AR / live=カメラAR / offline=オフライン保存。
@@ -75,6 +78,15 @@ export default function App() {
       );
     }, 320);
   };
+
+  // サムネ生成専用ルート（#/__thumbs）。通常UIは出さずハーネスだけ描く。
+  if (location.hash.replace(/^#\/?/, "").split("?")[0] === "__thumbs") {
+    return (
+      <Suspense fallback={null}>
+        <ThumbStudio />
+      </Suspense>
+    );
+  }
 
   return (
     <>

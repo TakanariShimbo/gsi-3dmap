@@ -337,31 +337,45 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
           <div className="zukan-grid">
             {filtered.slice(0, shown).map((e) => (
               <button key={e.id} className="zukan-card" onClick={() => openDetail(e)}>
-                <span className="zukan-card-head">
-                  <span className="zukan-card-name">{e.name}</span>
-                  <span className="zukan-card-elev">{e.elevationM.toLocaleString()} m</span>
+                {/* 山頂の斜め3D静止画（事前生成）。未生成の山は暗いプレースホルダのまま。 */}
+                <span className="zukan-card-thumb">
+                  <img
+                    src={`${import.meta.env.BASE_URL}thumbs/${e.id}.webp`}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={(ev) => {
+                      ev.currentTarget.style.display = "none";
+                    }}
+                  />
                 </span>
-                {(e.kana || e.titleEn) && (
-                  <span className="zukan-card-reading">
-                    {e.kana}
-                    {e.kana && e.titleEn && " / "}
-                    {e.titleEn && <span className="zukan-card-en">{e.titleEn}</span>}
+                <span className="zukan-card-body">
+                  <span className="zukan-card-head">
+                    <span className="zukan-card-name">{e.name}</span>
+                    <span className="zukan-card-elev">{e.elevationM.toLocaleString()} m</span>
                   </span>
-                )}
-                {e.prefecture && <span className="zukan-card-pref">{e.prefecture.replace(/\//g, "・")}</span>}
-                {/* 一覧は「読まずに選ぶ」。説明文は出さず、タグで特徴を伝える。 */}
-                {e.tags.length > 0 && (
-                  <span className="zukan-card-tags">
-                    {e.tags.slice(0, 3).map((t) => (
-                      <span key={t} className="zukan-tag zukan-tag--mini">
-                        {t}
-                      </span>
-                    ))}
-                    {e.tags.length > 3 && (
-                      <span className="zukan-tag zukan-tag--mini zukan-tag--more">+{e.tags.length - 3}</span>
-                    )}
-                  </span>
-                )}
+                  {(e.kana || e.titleEn) && (
+                    <span className="zukan-card-reading">
+                      {e.kana}
+                      {e.kana && e.titleEn && " / "}
+                      {e.titleEn && <span className="zukan-card-en">{e.titleEn}</span>}
+                    </span>
+                  )}
+                  {e.prefecture && <span className="zukan-card-pref">{e.prefecture.replace(/\//g, "・")}</span>}
+                  {/* 一覧は「読まずに選ぶ」。説明文は出さず、タグで特徴を伝える。 */}
+                  {e.tags.length > 0 && (
+                    <span className="zukan-card-tags">
+                      {e.tags.slice(0, 3).map((t) => (
+                        <span key={t} className="zukan-tag zukan-tag--mini">
+                          {t}
+                        </span>
+                      ))}
+                      {e.tags.length > 3 && (
+                        <span className="zukan-tag zukan-tag--mini zukan-tag--more">+{e.tags.length - 3}</span>
+                      )}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
