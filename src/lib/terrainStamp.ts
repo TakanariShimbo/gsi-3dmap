@@ -323,7 +323,7 @@ async function buildHeightmap(
  * 呼び出し元（写真ARの焼き込み）が drawImage で写真に貼り合わせる。
  */
 export async function renderTerrainStamp(input: TerrainStampInput): Promise<TerrainStampResult> {
-  const rangeKm = Math.max(1, Math.min(8, input.rangeKm ?? DEFAULTS.rangeKm));
+  const rangeKm = Math.max(1, Math.min(20, input.rangeKm ?? DEFAULTS.rangeKm));
   const style = input.style ?? DEFAULTS.style;
   const accent = input.accent ?? DEFAULTS.accent;
   const orientationMode = input.orientationMode ?? DEFAULTS.orientationMode;
@@ -417,15 +417,13 @@ export async function renderTerrainStamp(input: TerrainStampInput): Promise<Terr
     disposables.push(mat);
   } else {
     // contour（既定・主役）: 暗いベース面 + 等高線。
-    const baseMat = new THREE.MeshBasicMaterial({
-      color: 0x0e1620,
-      transparent: true,
-      opacity: 0.92,
-    });
+    // ベース面は不透明・等高線は depthTest off で必ず手前に描く。両方 transparent にして
+    // 同一深度で重ねると、等高線が暗いベース面に埋もれて accent 色が出ない。
+    const baseMat = new THREE.MeshBasicMaterial({ color: 0x0e1620 });
     const baseMesh = new THREE.Mesh(geo, baseMat);
     scene.add(baseMesh);
     disposables.push(baseMat);
-    // 等高線レベル（正規化高さ）。12 段、上段ほど不透明＆白寄り。
+    // 等高線レベル（正規化高さ）。12 段。
     const levels: number[] = [];
     const stepN = 12;
     for (let i = 1; i < stepN; i++) levels.push(i / stepN);
@@ -436,9 +434,11 @@ export async function renderTerrainStamp(input: TerrainStampInput): Promise<Terr
       const lineMat = new THREE.LineBasicMaterial({
         color: accentColor,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.92,
+        depthTest: false, // ベース面と同深度の Z ファイティングを避け、常に手前に描く
       });
       const lines = new THREE.LineSegments(lineGeo, lineMat);
+      lines.renderOrder = 1; // 透過描画パスの中でも後段に描く
       scene.add(lines);
       disposables.push(lineGeo, lineMat);
     }

@@ -526,7 +526,7 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
   const [stampOn, setStampOn] = useState(false);
   const [stampStyle, setStampStyle] = useState<StampStyle>("contour");
   const [stampCorner, setStampCorner] = useState<"br" | "bl" | "tr" | "tl">("br");
-  const [stampRangeKm, setStampRangeKm] = useState(3);
+  const [stampRangeKm, setStampRangeKm] = useState(5);
   const [stampAccent, setStampAccent] = useState("#d8ff4a");
   const [stampShowInfo, setStampShowInfo] = useState(true);
   const [stampOrient, setStampOrient] = useState<StampOrientation>("heading");
@@ -2543,8 +2543,8 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
         const sx = cardX + cardPad;
         const sy = cardY + cardPad;
         ctx.drawImage(result.canvas, sx, sy, stampPx, stampPx);
-        // 情報ブロック。
-        if (stampShowInfo && result.mountain) {
+        // 情報ブロック。山が見つかれば 名/標高/座標、見つからなければ「撮影地点」+ 座標。
+        if (stampShowInfo) {
           const ffName = roleFontStack(roleFonts.captionTitle);
           const ffMono = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
           await Promise.all([
@@ -2558,21 +2558,31 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
           const coordFs = Math.round(SHORT * 0.014);
           ctx.textAlign = "left";
           ctx.textBaseline = "alphabetic";
-          ctx.fillStyle = "#f5f3ec";
-          ctx.font = `700 ${nameFs}px ${ffName}`;
-          ctx.fillText(result.mountain.name, infoX, infoY + nameFs);
-          infoY += nameFs + Math.round(nameFs * 0.18);
-          ctx.fillStyle = stampAccent;
-          ctx.font = `500 ${elevFs}px ${ffMono}`;
-          ctx.fillText(`${Math.round(result.mountain.elevationM)} m`, infoX, infoY + elevFs);
-          infoY += elevFs + Math.round(elevFs * 0.18);
-          ctx.fillStyle = "rgba(245,243,236,0.55)";
-          ctx.font = `400 ${coordFs}px ${ffMono}`;
-          ctx.fillText(
-            formatLatLonShort(result.mountain.lat, result.mountain.lon),
-            infoX,
-            infoY + coordFs,
-          );
+          if (result.mountain) {
+            ctx.fillStyle = "#f5f3ec";
+            ctx.font = `700 ${nameFs}px ${ffName}`;
+            ctx.fillText(result.mountain.name, infoX, infoY + nameFs);
+            infoY += nameFs + Math.round(nameFs * 0.18);
+            ctx.fillStyle = stampAccent;
+            ctx.font = `500 ${elevFs}px ${ffMono}`;
+            ctx.fillText(`${Math.round(result.mountain.elevationM)} m`, infoX, infoY + elevFs);
+            infoY += elevFs + Math.round(elevFs * 0.18);
+            ctx.fillStyle = "rgba(245,243,236,0.55)";
+            ctx.font = `400 ${coordFs}px ${ffMono}`;
+            ctx.fillText(
+              formatLatLonShort(result.mountain.lat, result.mountain.lon),
+              infoX,
+              infoY + coordFs,
+            );
+          } else {
+            ctx.fillStyle = "#f5f3ec";
+            ctx.font = `700 ${nameFs}px ${ffName}`;
+            ctx.fillText("撮影地点", infoX, infoY + nameFs);
+            infoY += nameFs + Math.round(nameFs * 0.18);
+            ctx.fillStyle = "rgba(245,243,236,0.55)";
+            ctx.font = `400 ${coordFs}px ${ffMono}`;
+            ctx.fillText(formatLatLonShort(arLoc.lat, arLoc.lon), infoX, infoY + coordFs);
+          }
         }
         // 出典クレジット（小さく、スタンプと反対側の下部に）。
         const credFs = Math.round(SHORT * 0.012);
@@ -3902,22 +3912,33 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
                   ))}
                 </div>
               )}
-            {/* 3Dミニマップ・スタンプのプレビュー。オン時のみ。書き出しは bakeComposite が再生成。 */}
+            {/* 3Dミニマップ・スタンプのプレビュー。オン時のみ。書き出しは bakeComposite が再生成。
+                対象山が見つからない場合（peak 未選択 ＋ 近傍に山岳データ無し）は
+                撮影地点の座標だけを表示し、トグルが効いていることが分かるようにする。 */}
             {stampOn && stampPreview && (
               <div
                 className={`ar-stamp ar-stamp--${stampCorner}`}
                 style={{ "--stamp-accent": stampAccent } as React.CSSProperties}
               >
                 <img src={stampPreview.url} alt="" className="ar-stamp-img" draggable={false} />
-                {stampShowInfo && stampPreview.mountain && (
+                {stampShowInfo && (
                   <div className="ar-stamp-info">
-                    <div className="ar-stamp-name">{stampPreview.mountain.name}</div>
-                    <div className="ar-stamp-meta">
-                      <span className="ar-stamp-elev">{Math.round(stampPreview.mountain.elevationM)}m</span>
-                    </div>
-                    <div className="ar-stamp-coord">
-                      {formatLatLonShort(stampPreview.mountain.lat, stampPreview.mountain.lon)}
-                    </div>
+                    {stampPreview.mountain ? (
+                      <>
+                        <div className="ar-stamp-name">{stampPreview.mountain.name}</div>
+                        <div className="ar-stamp-meta">
+                          <span className="ar-stamp-elev">{Math.round(stampPreview.mountain.elevationM)}m</span>
+                        </div>
+                        <div className="ar-stamp-coord">
+                          {formatLatLonShort(stampPreview.mountain.lat, stampPreview.mountain.lon)}
+                        </div>
+                      </>
+                    ) : arLoc ? (
+                      <>
+                        <div className="ar-stamp-name">撮影地点</div>
+                        <div className="ar-stamp-coord">{formatLatLonShort(arLoc.lat, arLoc.lon)}</div>
+                      </>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -4410,15 +4431,17 @@ export default function MapView({ appMode, onHome, settings, initialTarget }: Ma
                                 type="range"
                                 className="ar-fs-slider"
                                 min={1.5}
-                                max={6}
-                                step={0.1}
+                                max={15}
+                                step={0.5}
                                 value={stampRangeKm}
                                 onChange={(e) => setStampRangeKm(Number(e.target.value))}
                                 aria-label="スタンプの範囲(km)"
                               />
                             </>,
                           )}
+                        {/* アクセント色は「陰影」スタイルでは可視化要素がほぼ無い（ピン頭のみ）ため非表示。 */}
                         {stampOn &&
+                          stampStyle !== "shaded" &&
                           arSec(
                             "stamp-color",
                             "アクセント色",
