@@ -674,6 +674,7 @@ body,
 }
 .cam-eye input[type="range"] {
   width: 100%;
+  margin: 0; /* UA既定の左右2pxマージンを消して枠内に収める */
   accent-color: #d6b46a;
 }
 .cam-hint {
@@ -916,6 +917,7 @@ body,
 }
 .slider-row input[type="range"] {
   width: 100%;
+  margin: 0; /* UA既定の左右2pxマージンを消して枠内にぴったり収める */
   accent-color: #d6b46a;
 }
 
@@ -960,6 +962,7 @@ body,
 }
 .dt-slider {
   width: 100%;
+  margin: 0; /* UA既定の左右2pxマージンを消して枠内にぴったり収める */
   accent-color: #d6b46a;
 }
 
@@ -1184,6 +1187,7 @@ body,
 }
 .save-field input[type="range"] {
   width: 100%;
+  margin: 0; /* UA既定の左右2pxマージンを消して枠内に収める */
   accent-color: #d6b46a;
 }
 
@@ -2190,7 +2194,7 @@ body,
 }
 .ar-fs-slider {
   width: 100%;
-  margin: 2px 0 2px;
+  margin: 2px 0 2px; /* 上下のみ。左右0でUA既定マージンを消して枠内に収める */
   accent-color: #d6b46a; /* 他のスライダーと同じ金に（既定の青を上書き） */
 }
 /* フォント選択（役割ごとに和文＋欧文セットを1つ選ぶ）。 */
