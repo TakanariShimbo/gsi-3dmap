@@ -41,12 +41,17 @@ export default function ThumbStudio() {
         // カメラ距離は山の高さにほぼ比例（低い山ほど寄る）。
         // 旧式は基準が大きく、低山を引きで撮りすぎて点のようになっていた。
         // ただし起伏の小さい低山は寄りすぎると“ボケた地面”になるため下限(4.0)で止める。
-        const R = Math.max(4.0, 1.4 + (elevM / 3800) * 9.3);
+        const rMul = (window as unknown as { __rMul?: number }).__rMul ?? 1;
+        const R = Math.max(4.0, 1.4 + (elevM / 3800) * 9.3) * rMul;
         const camH = elevToWorldY(elevM) + R * 0.42;
         const az = Math.PI * 0.27;
+        // 近接撮影だと画面最下部（最前景）が最細タイルのズーム上限を超えて粗い面になりがち。
+        // 照準をやや上げて最前景を画面外に追い出す。調整用に window.__lookUp で上書き可能。
+        const lookUp = (window as unknown as { __lookUp?: number }).__lookUp ?? 0;
+        const lookAt = new THREE.Vector3(target.x, target.y + lookUp, target.z);
         const place = () => {
           camera.position.set(target.x + Math.cos(az) * R, camH, target.z + Math.sin(az) * R);
-          camera.lookAt(target);
+          camera.lookAt(lookAt);
         };
         let frames = 0;
         let settled = 0;
