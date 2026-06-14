@@ -348,8 +348,8 @@ export default function Zukan({ onHome, onOpenMap }: Props) {
                       ev.currentTarget.style.display = "none";
                     }}
                   />
-                  {/* 有名順のときだけ順位バッジ（ランキング感を出す）。 */}
-                  {sort === "famous" && <span className="zukan-card-rank">{i + 1}</span>}
+                  {/* 現在の並び順での順位バッジ（有名順=人気順、標高順=高さ順…）。常に出して見た目もそろえる。 */}
+                  <span className="zukan-card-rank">{i + 1}</span>
                 </span>
                 <span className="zukan-card-body">
                   <span className="zukan-card-name">{e.name}</span>
